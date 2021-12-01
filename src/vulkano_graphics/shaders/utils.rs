@@ -1,4 +1,5 @@
-#[derive(Default, Debug, Clone)]
+#[repr(C)]
+#[derive(Default, Debug, Copy, Clone)]
 pub struct Vertex2d {
   pub position: [f32; 2],
 }

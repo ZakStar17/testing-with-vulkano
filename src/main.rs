@@ -1,136 +1,61 @@
 mod vulkano_graphics;
 
-use vulkano_graphics::{initialization, shaders};
+use std::time::Instant;
+use vulkano_graphics::{shaders, VulkanProgram};
 
-use initialization::{logical_device::Devices, physical_device};
-use shaders::triangle::{fs, vs};
-use shaders::utils::Vertex2d;
+use shaders::triangle::vs;
 
 use std::sync::Arc;
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
+use vulkano::buffer::TypedBufferAccess;
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
+use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::DeviceExtensions;
-use vulkano::image::view::ImageView;
-use vulkano::image::{ImageUsage, SwapchainImage};
-use vulkano::instance::Instance;
-use vulkano::pipeline::viewport::Viewport;
-use vulkano::pipeline::GraphicsPipeline;
-use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
+use vulkano::pipeline::PipelineBindPoint;
 use vulkano::swapchain;
-use vulkano::swapchain::{AcquireError, Swapchain, SwapchainCreationError};
+use vulkano::swapchain::AcquireError;
 use vulkano::sync;
 use vulkano::sync::{FlushError, GpuFuture};
-use vulkano::Version;
 use vulkano_win::VkSurfaceBuild;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
-use winit::window::{Window, WindowBuilder};
+use winit::window::WindowBuilder;
 
 fn main() {
-    let required_extensions = vulkano_win::required_extensions();
-
-    let instance = Instance::new(None, Version::V1_1, &required_extensions, None).unwrap();
-
     let event_loop = EventLoop::new();
+    let instance = vulkano_graphics::get_instance();
+
     let surface = WindowBuilder::new()
         .build_vk_surface(&event_loop, instance.clone())
         .unwrap();
 
-    let g_device_extensions = DeviceExtensions {
+    let device_extensions = DeviceExtensions {
         khr_swapchain: true,
         ..DeviceExtensions::none()
     };
 
     let physical_device =
-        physical_device::get_physical_device(&instance, &g_device_extensions, &surface);
+        vulkano_graphics::get_physical_device(&instance, &device_extensions, &surface);
 
-    let (devices, queues) = Devices::new(&physical_device, &g_device_extensions);
+    let queue_families = vulkano_graphics::get_queue_families(physical_device);
 
-    let (mut swapchain, images) = {
-        let caps = surface.capabilities(physical_device).unwrap();
-
-        let composite_alpha = caps.supported_composite_alpha.iter().next().unwrap();
-
-        let format = caps.supported_formats[0].0;
-
-        let dimensions: [u32; 2] = surface.window().inner_size().into();
-
-        Swapchain::start(devices.graphical.clone(), surface.clone())
-            .num_images(caps.min_image_count)
-            .format(format)
-            .dimensions(dimensions)
-            .usage(ImageUsage::color_attachment())
-            .sharing_mode(&queues.graphical)
-            .composite_alpha(composite_alpha)
-            .build()
-            .unwrap()
-    };
-
-    let vertex_buffer = CpuAccessibleBuffer::from_iter(
-        devices.graphical.clone(),
-        BufferUsage::all(),
-        false,
-        [
-            Vertex2d {
-                position: [-0.5, -0.25],
-            },
-            Vertex2d {
-                position: [0.0, 0.5],
-            },
-            Vertex2d {
-                position: [0.25, -0.1],
-            },
-        ]
-        .iter()
-        .cloned(),
-    )
-    .unwrap();
-
-    let vs = vs::Shader::load(devices.graphical.clone()).unwrap();
-    let fs = fs::Shader::load(devices.graphical.clone()).unwrap();
-
-    let render_pass = Arc::new(
-        vulkano::single_pass_renderpass!(
-            devices.graphical.clone(),
-            attachments: {
-                color: {
-                    load: Clear,
-                    store: Store,
-                    format: swapchain.format(),
-                    samples: 1,
-                }
-            },
-            pass: {
-                color: [color],
-                depth_stencil: {}
-            }
-        )
-        .unwrap(),
+    let mut program = VulkanProgram::start(
+        device_extensions,
+        physical_device,
+        &queue_families,
+        &surface,
     );
 
-    let pipeline = Arc::new(
-        GraphicsPipeline::start()
-            .vertex_input_single_buffer::<Vertex2d>()
-            .vertex_shader(vs.main_entry_point(), ())
-            .triangle_list()
-            .viewports_dynamic_scissors_irrelevant(1)
-            .fragment_shader(fs.main_entry_point(), ())
-            .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-            .build(devices.graphical.clone())
-            .unwrap(),
-    );
+    let mut program_window_updated = false;
 
-    let mut viewport = Viewport {
-        origin: [0.0, 0.0],
-        dimensions: [0.0, 0.0],
-        depth_range: 0.0..1.0,
-    };
+    let mut previous_frame_end = Some(sync::now(program.device.clone()).boxed());
+    let time_start = Instant::now();
 
-    let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
-
-    let mut recreate_swapchain = false;
-
-    let mut previous_frame_end = Some(sync::now(devices.graphical.clone()).boxed());
+    let colors = [
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [1.0, 1.0, 1.0],
+    ];
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {
@@ -143,60 +68,84 @@ fn main() {
             event: WindowEvent::Resized(_),
             ..
         } => {
-            recreate_swapchain = true;
+            program_window_updated = true;
         }
         Event::RedrawEventsCleared => {
+            instance.api_version();
+
             previous_frame_end.as_mut().unwrap().cleanup_finished();
 
-            if recreate_swapchain {
-                let dimensions: [u32; 2] = surface.window().inner_size().into();
-                let (new_swapchain, new_images) =
-                    match swapchain.recreate().dimensions(dimensions).build() {
-                        Ok(r) => r,
-                        Err(SwapchainCreationError::UnsupportedDimensions) => return,
-                        Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
-                    };
+            if program_window_updated {
+                println!("Updating with the window!");
+                program.update_with_window(&surface);
 
-                swapchain = new_swapchain;
-                framebuffers =
-                    window_size_dependent_setup(&new_images, render_pass.clone(), &mut viewport);
-                recreate_swapchain = false;
+                program_window_updated = false;
             }
 
+            // todo: more all of this out of here
+            // todo: make so that the command buffer doesn't get recreated each frame
+            let uniform_buffer_subbuffer = {
+                let elapsed = time_start.elapsed();
+
+                let uniform_data = vs::ty::Data {
+                    color: colors[(elapsed * 4).as_secs() as usize % colors.len()],
+                };
+
+                Arc::new(program.buffers.uniform.next(uniform_data).unwrap())
+            };
+
+            let layout = program
+                .pipeline
+                .layout()
+                .descriptor_set_layouts()
+                .get(0)
+                .unwrap();
+            let mut set_builder = PersistentDescriptorSet::start(layout.clone());
+
+            set_builder.add_buffer(uniform_buffer_subbuffer).unwrap();
+
+            let set = Arc::new(set_builder.build().unwrap());
+
             let (image_num, suboptimal, acquire_future) =
-                match swapchain::acquire_next_image(swapchain.clone(), None) {
+                match swapchain::acquire_next_image(program.swapchain.clone(), None) {
                     Ok(r) => r,
                     Err(AcquireError::OutOfDate) => {
-                        recreate_swapchain = true;
+                        program_window_updated = true;
                         return;
                     }
                     Err(e) => panic!("Failed to acquire next image: {:?}", e),
                 };
 
             if suboptimal {
-                recreate_swapchain = true;
+                program_window_updated = true;
             }
 
             let clear_values = vec![[0.0, 0.0, 1.0, 1.0].into()];
 
             let mut builder = AutoCommandBufferBuilder::primary(
-                devices.graphical.clone(),
-                queues.graphical.family(),
+                program.device.clone(),
+                program.queues.graphical.family(),
                 CommandBufferUsage::OneTimeSubmit,
             )
             .unwrap();
 
             builder
                 .begin_render_pass(
-                    framebuffers[image_num].clone(),
+                    program.framebuffers[image_num].clone(),
                     SubpassContents::Inline,
                     clear_values,
                 )
                 .unwrap()
-                .set_viewport(0, [viewport.clone()])
-                .bind_pipeline_graphics(pipeline.clone())
-                .bind_vertex_buffers(0, vertex_buffer.clone())
-                .draw(vertex_buffer.len() as u32, 1, 0, 0)
+                .set_viewport(0, [program.viewport.clone()])
+                .bind_pipeline_graphics(program.pipeline.clone())
+                .bind_descriptor_sets(
+                    PipelineBindPoint::Graphics,
+                    program.pipeline.layout().clone(),
+                    0,
+                    set.clone(),
+                )
+                .bind_vertex_buffers(0, program.buffers.staging.clone())
+                .draw(program.buffers.staging.len() as u32, 1, 0, 0)
                 .unwrap()
                 .end_render_pass()
                 .unwrap();
@@ -207,9 +156,13 @@ fn main() {
                 .take()
                 .unwrap()
                 .join(acquire_future)
-                .then_execute(queues.graphical.clone(), command_buffer)
+                .then_execute(program.queues.graphical.clone(), command_buffer)
                 .unwrap()
-                .then_swapchain_present(queues.graphical.clone(), swapchain.clone(), image_num)
+                .then_swapchain_present(
+                    program.queues.graphical.clone(),
+                    program.swapchain.clone(),
+                    image_num,
+                )
                 .then_signal_fence_and_flush();
 
             match future {
@@ -217,39 +170,15 @@ fn main() {
                     previous_frame_end = Some(future.boxed());
                 }
                 Err(FlushError::OutOfDate) => {
-                    recreate_swapchain = true;
-                    previous_frame_end = Some(sync::now(devices.graphical.clone()).boxed());
+                    program_window_updated = true;
+                    previous_frame_end = Some(sync::now(program.device.clone()).boxed());
                 }
                 Err(e) => {
                     println!("Failed to flush future: {:?}", e);
-                    previous_frame_end = Some(sync::now(devices.graphical.clone()).boxed());
+                    previous_frame_end = Some(sync::now(program.device.clone()).boxed());
                 }
             }
         }
         _ => (),
     });
-}
-
-/// This method is called once during initialization, then again whenever the window is resized
-fn window_size_dependent_setup(
-    images: &[Arc<SwapchainImage<Window>>],
-    render_pass: Arc<RenderPass>,
-    viewport: &mut Viewport,
-) -> Vec<Arc<dyn FramebufferAbstract>> {
-    let dimensions = images[0].dimensions();
-    viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
-
-    images
-        .iter()
-        .map(|image| {
-            let view = ImageView::new(image.clone()).unwrap();
-            Arc::new(
-                Framebuffer::start(render_pass.clone())
-                    .add(view)
-                    .unwrap()
-                    .build()
-                    .unwrap(),
-            ) as Arc<dyn FramebufferAbstract>
-        })
-        .collect::<Vec<_>>()
 }
