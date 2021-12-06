@@ -1,14 +1,18 @@
 use crate::vulkano_graphics::shaders;
-use crate::vulkano_graphics::{Buffers, CommandBuffers, QueueFamilies, Queues, Shaders};
+use crate::vulkano_graphics::{
+  Buffers, CommandBuffers, DescriptorSets, QueueFamilies, Queues, Shaders,
+};
+use vulkano::descriptor_set::layout::DescriptorSetLayout;
+use vulkano::descriptor_set::PersistentDescriptorSet;
 
 use shaders::triangle::{fs, vs};
 use shaders::utils::Vertex2d;
 
 use std::sync::Arc;
-use vulkano::buffer::{
-  BufferAccess, BufferUsage, CpuAccessibleBuffer, CpuBufferPool, DeviceLocalBuffer,
-};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
+use vulkano::buffer::TypedBufferAccess;
+use vulkano::buffer::{BufferAccess, BufferUsage, CpuAccessibleBuffer, DeviceLocalBuffer};
+use vulkano::command_buffer::PrimaryAutoCommandBuffer;
+use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
 use vulkano::device::physical::QueueFamily;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::DeviceExtensions;
@@ -18,6 +22,7 @@ use vulkano::image::{ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
+use vulkano::pipeline::PipelineBindPoint;
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
 use vulkano::swapchain::Surface;
 use vulkano::swapchain::Swapchain;
@@ -26,21 +31,36 @@ use vulkano::sync::GpuFuture;
 use vulkano::Version;
 use winit::window::Window;
 
-pub fn get_instance() -> Arc<Instance> {
+const LIST_AVAILABLE_LAYERS: bool = true;
+
+const ENABLE_VALIDATION_LAYERS: bool = false;
+
+// "VK_LAYER_LUNARG_screenshot", "VK_LAYER_LUNARG_monitor", "VK_LAYER_LUNARG_gfxreconstruct", "VK_LAYER_LUNARG_device_simulation", "VK_LAYER_LUNARG_api_dump"
+const VALIDATION_LAYERS: &[&str] = &["VK_LAYER_LUNARG_api_dump"];
+
+pub fn create_instance() -> Arc<Instance> {
   let required_extensions = vulkano_win::required_extensions();
 
-  let layers: Vec<_> = vulkano::instance::layers_list().unwrap().collect();
-  let layer_names = layers
-    .iter()
-    .map(|l| l.name())
-    .filter(|&n| n.contains("VK_LAYER_LUNARG"));
-  println!(
-    "Using layers {:?}",
-    layer_names.clone().collect::<Vec<&str>>()
-  );
+  if LIST_AVAILABLE_LAYERS {
+    let layers: Vec<_> = vulkano::instance::layers_list().unwrap().collect();
+    let layer_names = layers.iter().map(|l| l.name());
+    println!(
+      "Using layers {:?}",
+      layer_names.clone().collect::<Vec<&str>>()
+    );
+  }
 
-  // substitute last None for layer_names to actually use them
-  Instance::new(None, Version::V1_1, &required_extensions, None).unwrap()
+  if ENABLE_VALIDATION_LAYERS {
+    Instance::new(
+      None,
+      Version::V1_1,
+      &required_extensions,
+      VALIDATION_LAYERS.iter().cloned(),
+    )
+    .unwrap()
+  } else {
+    Instance::new(None, Version::V1_1, &required_extensions, None).unwrap()
+  }
 }
 
 pub fn get_physical_device<'a>(
@@ -180,7 +200,7 @@ pub fn get_queue_families<'a>(physical_device: PhysicalDevice<'a>) -> QueueFamil
   }
 }
 
-pub fn get_logical_device_and_queues(
+pub fn create_logical_device_and_queues(
   physical_device: &PhysicalDevice,
   extensions: &DeviceExtensions,
   queue_families: &QueueFamilies,
@@ -209,11 +229,12 @@ pub fn get_logical_device_and_queues(
   (device, queues)
 }
 
-pub fn get_swapchain(
+pub fn create_swapchain(
   physical_device: &PhysicalDevice,
   logical_device: &Arc<Device>,
   surface: &Arc<Surface<Window>>,
   queues: &Queues,
+  image_count: u32
 ) -> (Arc<Swapchain<Window>>, Vec<Arc<SwapchainImage<Window>>>) {
   let caps = surface.capabilities(*physical_device).unwrap();
 
@@ -224,7 +245,7 @@ pub fn get_swapchain(
   let dimensions: [u32; 2] = surface.window().inner_size().into();
 
   Swapchain::start(logical_device.clone(), surface.clone())
-    .num_images(caps.min_image_count)
+    .num_images(image_count)
     .format(format)
     .dimensions(dimensions)
     .usage(ImageUsage::color_attachment())
@@ -234,9 +255,12 @@ pub fn get_swapchain(
     .unwrap()
 }
 
-pub fn initialize_and_get_buffers(device: &Arc<Device>, queue_families: &QueueFamilies) -> Buffers {
-  // todo: Make everything about buffers better
-  let vertex_buffer = CpuAccessibleBuffer::from_iter(
+pub fn create_and_initalize_buffers(
+  device: &Arc<Device>,
+  queues: &Queues,
+  n_swapchain_images: usize,
+) -> Buffers {
+  let vertex = CpuAccessibleBuffer::from_iter(
     device.clone(),
     BufferUsage::transfer_source(),
     false,
@@ -256,21 +280,62 @@ pub fn initialize_and_get_buffers(device: &Arc<Device>, queue_families: &QueueFa
   )
   .unwrap();
 
-  let staging_buffer: Arc<DeviceLocalBuffer<[Vertex2d]>> = DeviceLocalBuffer::array(
+  let staging: Arc<DeviceLocalBuffer<[Vertex2d]>> = DeviceLocalBuffer::array(
     device.clone(),
-    vertex_buffer.size(),
+    vertex.size(),
     BufferUsage::vertex_buffer_transfer_destination(),
-    [queue_families.graphical, queue_families.transfers],
+    [queues.graphical.family(), queues.transfers.family()],
   )
   .unwrap();
 
-  let uniform_buffer = CpuBufferPool::<vs::ty::Data>::new(device.clone(), BufferUsage::all());
+  let uniform = create_uniform_buffers(device, n_swapchain_images);
 
   Buffers {
-    vertex: vertex_buffer,
-    staging: staging_buffer,
-    uniform: uniform_buffer,
+    vertex,
+    staging,
+    uniform,
   }
+}
+
+fn create_uniform_buffers(
+  device: &Arc<Device>,
+  buffer_count: usize,
+) -> Vec<Arc<CpuAccessibleBuffer<vs::ty::Data>>> {
+  let mut buffers = Vec::with_capacity(buffer_count);
+  for _ in 0..buffer_count {
+    buffers.push(
+      CpuAccessibleBuffer::from_data(
+        device.clone(),
+        BufferUsage::uniform_buffer(),
+        false,
+        vs::ty::Data {
+          color: [0.0, 0.0, 0.0],
+        },
+      )
+      .unwrap(),
+    );
+  }
+
+  buffers
+}
+
+pub fn create_descriptor_sets(
+  buffers: &Buffers,
+  descriptor_set_layout: &Arc<DescriptorSetLayout>,
+) -> DescriptorSets {
+  let uniform = buffers
+    .uniform
+    .iter()
+    .map(|buffer| {
+      let mut set_builder = PersistentDescriptorSet::start(descriptor_set_layout.clone());
+
+      set_builder.add_buffer(buffer.clone()).unwrap();
+
+      Arc::new(set_builder.build().unwrap())
+    })
+    .collect();
+
+  DescriptorSets { uniform }
 }
 
 pub fn load_shaders(device: &Arc<Device>) -> Shaders {
@@ -280,7 +345,7 @@ pub fn load_shaders(device: &Arc<Device>) -> Shaders {
   }
 }
 
-pub fn get_render_pass(
+pub fn create_render_pass(
   device: &Arc<Device>,
   swapchain: &Arc<Swapchain<Window>>,
 ) -> Arc<RenderPass> {
@@ -304,15 +369,19 @@ pub fn get_render_pass(
   )
 }
 
-pub fn load_command_buffers(
+pub fn create_command_buffers(
   device: &Arc<Device>,
-  queue_families: &QueueFamilies,
+  queues: &Queues,
   buffers: &Buffers,
+  framebuffers: &Vec<Arc<dyn FramebufferAbstract>>,
+  viewport: &Viewport,
+  pipeline: &Arc<GraphicsPipeline>,
+  descriptor_sets: &DescriptorSets,
 ) -> CommandBuffers {
-  let stage_vertices_command_buffer = {
+  let stage_vertices = {
     let mut builder = AutoCommandBufferBuilder::primary(
       device.clone(),
-      queue_families.transfers,
+      queues.transfers.family(),
       CommandBufferUsage::MultipleSubmit,
     )
     .unwrap();
@@ -320,12 +389,73 @@ pub fn load_command_buffers(
     builder
       .copy_buffer(buffers.vertex.clone(), buffers.staging.clone())
       .unwrap();
-    builder.build().unwrap()
+
+    Arc::new(builder.build().unwrap())
   };
 
+  let main = create_main_command_buffers(
+    device,
+    queues,
+    buffers,
+    framebuffers,
+    viewport,
+    pipeline,
+    descriptor_sets,
+  );
+
   CommandBuffers {
-    stage_vertices: Arc::new(stage_vertices_command_buffer),
+    stage_vertices,
+    main,
   }
+}
+
+pub fn create_main_command_buffers(
+  device: &Arc<Device>,
+  queues: &Queues,
+  buffers: &Buffers,
+  framebuffers: &Vec<Arc<dyn FramebufferAbstract>>,
+  viewport: &Viewport,
+  pipeline: &Arc<GraphicsPipeline>,
+  descriptor_sets: &DescriptorSets,
+) -> Vec<Arc<PrimaryAutoCommandBuffer>> {
+  let clear_values = vec![[0.0, 0.0, 1.0, 1.0].into()];
+
+  framebuffers
+    .iter()
+    .enumerate()
+    .map(|(i, framebuffer)| {
+      let mut builder = AutoCommandBufferBuilder::primary(
+        device.clone(),
+        queues.graphical.family(),
+        CommandBufferUsage::SimultaneousUse,
+      )
+      .unwrap();
+
+      builder
+        .begin_render_pass(
+          framebuffer.clone(),
+          SubpassContents::Inline,
+          clear_values.clone(),
+        )
+        .unwrap()
+        .set_viewport(0, [viewport.clone()])
+        .bind_pipeline_graphics(pipeline.clone())
+        .bind_descriptor_sets(
+          PipelineBindPoint::Graphics,
+          pipeline.layout().clone(),
+          0,
+          descriptor_sets.uniform[i].clone(),
+        )
+        .bind_vertex_buffers(0, buffers.staging.clone())
+        .draw(buffers.staging.len() as u32, 1, 0, 0)
+        .unwrap()
+        .end_render_pass()
+        .unwrap();
+
+      builder.build().unwrap()
+    })
+    .map(|c_b| Arc::new(c_b))
+    .collect()
 }
 
 // Executes a command buffer copying the vertex buffer into the staging buffer,
@@ -347,7 +477,7 @@ pub fn update_staging_buffer(
   future.wait(None).unwrap();
 }
 
-pub fn get_pipeline(
+pub fn create_pipeline(
   device: &Arc<Device>,
   shaders: &Shaders,
   render_pass: &Arc<RenderPass>,
@@ -371,7 +501,7 @@ pub fn get_pipeline(
   )
 }
 
-pub fn get_framebuffers(
+pub fn create_framebuffers(
   images: &[Arc<SwapchainImage<Window>>],
   render_pass: Arc<RenderPass>,
 ) -> Vec<Arc<dyn FramebufferAbstract>> {
