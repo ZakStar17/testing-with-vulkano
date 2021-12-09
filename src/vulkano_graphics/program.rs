@@ -1,57 +1,20 @@
-use crate::vulkano_graphics::initialization as init;
-use crate::vulkano_graphics::shaders;
+use crate::vulkano_graphics;
+use crate::vulkano_graphics::shaders::Shaders;
+use crate::vulkano_graphics::{Buffers, CommandBuffers, QueueFamilies, Queues, SwapchainData};
 use std::time::Duration;
-use vulkano::descriptor_set::PersistentDescriptorSet;
-
-use shaders::triangle::{fs, vs};
-use shaders::utils::Vertex2d;
+use winit::dpi::PhysicalSize;
 
 use std::sync::Arc;
-use vulkano::buffer::{CpuAccessibleBuffer, DeviceLocalBuffer};
-use vulkano::command_buffer::PrimaryAutoCommandBuffer;
+
+use cgmath::Matrix4;
+
 use vulkano::device::physical::PhysicalDevice;
-use vulkano::device::physical::QueueFamily;
+use vulkano::device::Device;
 use vulkano::device::DeviceExtensions;
-use vulkano::device::{Device, Queue};
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
-use vulkano::render_pass::{FramebufferAbstract, RenderPass};
 use vulkano::swapchain::Surface;
-use vulkano::swapchain::Swapchain;
-use vulkano::swapchain::SwapchainCreationError;
 use winit::window::Window;
-
-pub struct QueueFamilies<'a> {
-  pub graphical: QueueFamily<'a>,
-  pub compute: QueueFamily<'a>,
-  pub transfers: QueueFamily<'a>,
-}
-
-pub struct Queues {
-  pub graphical: Arc<Queue>,
-  pub compute: Arc<Queue>,
-  pub transfers: Arc<Queue>,
-}
-
-pub struct Buffers {
-  pub vertex: Arc<CpuAccessibleBuffer<[Vertex2d]>>,
-  pub staging: Arc<DeviceLocalBuffer<[Vertex2d]>>,
-  pub uniform: Vec<Arc<CpuAccessibleBuffer<vs::ty::Data>>>,
-}
-
-pub struct DescriptorSets {
-  pub uniform: Vec<Arc<PersistentDescriptorSet>>,
-}
-
-pub struct CommandBuffers {
-  pub stage_vertices: Arc<PrimaryAutoCommandBuffer>,
-  pub main: Vec<Arc<PrimaryAutoCommandBuffer>>,
-}
-
-pub struct Shaders {
-  pub vertex: vs::Shader,
-  pub fragment: fs::Shader,
-}
 
 // This can't have stored both a reference and a physical device
 // because the physical device has internally a reference to the instance
@@ -60,14 +23,11 @@ pub struct Shaders {
 pub struct VulkanoProgram {
   pub device: Arc<Device>,
   pub queues: Queues,
-  pub swapchain: Arc<Swapchain<Window>>,
+  pub swapchain_data: SwapchainData,
   pub buffers: Buffers,
   pub command_buffers: CommandBuffers,
-  pub descriptor_sets: DescriptorSets,
   pub shaders: Shaders,
-  pub render_pass: Arc<RenderPass>,
   pub viewport: Viewport,
-  pub framebuffers: Vec<Arc<dyn FramebufferAbstract>>,
   pub pipeline: Arc<GraphicsPipeline>,
   pub image_count: usize,
 }
@@ -77,110 +37,100 @@ impl VulkanoProgram {
     device_extensions: DeviceExtensions,
     physical_device: PhysicalDevice,
     queue_families: &QueueFamilies,
-    surface: &Arc<Surface<Window>>,
+    surface: Arc<Surface<Window>>,
   ) -> Self {
-    let (device, queues) =
-      init::create_logical_device_and_queues(&physical_device, &device_extensions, &queue_families);
+    let (device, queues) = vulkano_graphics::create_logical_device_and_queues(
+      &physical_device,
+      &device_extensions,
+      &queue_families,
+    );
 
     let surface_capabilities = surface.capabilities(physical_device).unwrap();
     let image_count = (surface_capabilities.min_image_count + 1) as usize;
 
-    let (swapchain, images) =
-      init::create_swapchain(&physical_device, &device, surface, &queues, image_count as u32);
+    let swapchain_data = SwapchainData::init(
+      physical_device,
+      device.clone(),
+      surface.clone(),
+      &queues,
+      image_count as u32,
+    );
 
-    let shaders = init::load_shaders(&device);
+    let shaders = Shaders::load(device.clone());
 
-    let render_pass = init::create_render_pass(&device, &swapchain);
-
-    let dimensions = images[0].dimensions();
+    let dimensions = swapchain_data.images[0].dimensions();
     let viewport = Viewport {
       origin: [0.0, 0.0],
       dimensions: [dimensions[0] as f32, dimensions[1] as f32],
       depth_range: 0.0..1.0,
     };
 
-    let framebuffers = init::create_framebuffers(&images, render_pass.clone());
-    let pipeline = init::create_pipeline(&device, &shaders, &render_pass, &images[0].dimensions());
+    let pipeline = vulkano_graphics::create_pipeline(
+      device.clone(),
+      &shaders,
+      swapchain_data.render_pass.clone(),
+      &viewport,
+    );
 
-    let buffers = init::create_and_initalize_buffers(&device, &queues, image_count);
-
-    let descriptor_sets = init::create_descriptor_sets(
-      &buffers,
+    let buffers = Buffers::init(
+      device.clone(),
+      &queues,
+      image_count,
       pipeline.layout().descriptor_set_layouts().get(0).unwrap(),
     );
 
-    let command_buffers = init::create_command_buffers(
-      &device,
+    let command_buffers = CommandBuffers::init(
+      device.clone(),
       &queues,
       &buffers,
-      &framebuffers,
+      &swapchain_data.framebuffers,
       &viewport,
-      &pipeline,
-      &descriptor_sets,
+      pipeline.clone(),
     );
-
-    // populate staging vertex buffer for the first time
-    init::update_staging_buffer(&device, &queues, &command_buffers);
 
     Self {
       device,
       queues,
-      swapchain,
+      swapchain_data,
       buffers,
       command_buffers,
       shaders,
-      render_pass,
       viewport,
-      framebuffers,
       pipeline,
-      descriptor_sets,
       image_count,
     }
   }
 
-  pub fn update_with_window(&mut self, surface: &Arc<Surface<Window>>) {
-    let dimensions: [u32; 2] = surface.window().inner_size().into();
+  pub fn handle_window_update(&mut self, window_dimensions: PhysicalSize<u32>) {
+    self.swapchain_data.recreate(&window_dimensions.into());
 
-    let (new_swapchain, new_images) = match self.swapchain.recreate().dimensions(dimensions).build()
-    {
-      Ok(r) => r,
-      Err(SwapchainCreationError::UnsupportedDimensions) => return,
-      Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
-    };
-
-    // recreate swapchain
-    self.swapchain = new_swapchain;
-    self.framebuffers = init::create_framebuffers(&new_images, self.render_pass.clone());
-    let dimensions = new_images[0].dimensions();
-    self.viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
+    self.viewport.dimensions = window_dimensions.into();
 
     // recreate pipeline
-    self.pipeline = init::create_pipeline(
-      &self.device,
+    self.pipeline = vulkano_graphics::create_pipeline(
+      self.device.clone(),
       &self.shaders,
-      &self.render_pass,
-      &new_images[0].dimensions(),
+      self.swapchain_data.render_pass.clone(),
+      &self.viewport,
     );
 
     // recreate command buffers that depend on the objects recreated
-    self.command_buffers.main = init::create_main_command_buffers(
-      &self.device,
+    self.command_buffers.update_window_dependent(
+      self.device.clone(),
       &self.queues,
       &self.buffers,
-      &self.framebuffers,
+      &self.swapchain_data.framebuffers,
       &self.viewport,
-      &self.pipeline,
-      &self.descriptor_sets,
+      self.pipeline.clone(),
     );
   }
 
-  pub fn update(&self, elapsed_time: &Duration, n_image: usize, colors: &[[f32; 3]; 4]) {
-    let new_color = colors[(elapsed_time).as_secs() as usize % colors.len()];
-
-    let mut buffer_content = self.buffers.uniform[n_image]
+  pub fn update(&self, _elapsed_time: &Duration, n_image: usize, matrix: Matrix4<f32>) {
+    let mut buffer_content = self.buffers.uniforms[n_image]
+      .0
       .write()
       .unwrap_or_else(|e| panic!("Failed to write to uniform buffer\n{}", e));
 
-    buffer_content.color = new_color;
+    buffer_content.matrix = matrix.into();
   }
 }
