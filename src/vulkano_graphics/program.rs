@@ -11,8 +11,10 @@ use cgmath::Matrix4;
 use vulkano::device::physical::PhysicalDevice;
 use vulkano::device::Device;
 use vulkano::device::DeviceExtensions;
-use vulkano::pipeline::viewport::Viewport;
+use vulkano::image::ImageAccess;
+use vulkano::pipeline::graphics::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
+use vulkano::pipeline::Pipeline;
 use vulkano::swapchain::Surface;
 use winit::window::Window;
 
@@ -61,7 +63,7 @@ impl VulkanoProgram {
     let dimensions = swapchain_data.images[0].dimensions();
     let viewport = Viewport {
       origin: [0.0, 0.0],
-      dimensions: [dimensions[0] as f32, dimensions[1] as f32],
+      dimensions: [dimensions.width() as f32, dimensions.height() as f32],
       depth_range: 0.0..1.0,
     };
 

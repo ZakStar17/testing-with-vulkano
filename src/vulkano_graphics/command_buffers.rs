@@ -5,12 +5,13 @@ use vulkano::buffer::TypedBufferAccess;
 use vulkano::command_buffer::PrimaryAutoCommandBuffer;
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
 use vulkano::device::Device;
-use vulkano::pipeline::viewport::Viewport;
+use vulkano::pipeline::graphics::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::pipeline::PipelineBindPoint;
-use vulkano::render_pass::FramebufferAbstract;
+use vulkano::render_pass::Framebuffer;
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
+use vulkano::pipeline::Pipeline;
 
 pub struct CommandBuffers {
   pub main: Vec<Arc<PrimaryAutoCommandBuffer>>,
@@ -21,7 +22,7 @@ impl CommandBuffers {
     device: Arc<Device>,
     queues: &Queues,
     buffers: &Buffers,
-    framebuffers: &Vec<Arc<dyn FramebufferAbstract>>,
+    framebuffers: &Vec<Arc<Framebuffer>>,
     viewport: &Viewport,
     pipeline: Arc<GraphicsPipeline>,
   ) -> Self {
@@ -34,7 +35,7 @@ impl CommandBuffers {
     device: Arc<Device>,
     queues: &Queues,
     buffers: &Buffers,
-    framebuffers: &Vec<Arc<dyn FramebufferAbstract>>,
+    framebuffers: &Vec<Arc<Framebuffer>>,
     viewport: &Viewport,
     pipeline: Arc<GraphicsPipeline>,
   ) -> Vec<Arc<PrimaryAutoCommandBuffer>> {
@@ -81,7 +82,7 @@ impl CommandBuffers {
     device: Arc<Device>,
     queues: &Queues,
     buffers: &Buffers,
-    framebuffers: &Vec<Arc<dyn FramebufferAbstract>>,
+    framebuffers: &Vec<Arc<Framebuffer>>,
     viewport: &Viewport,
     pipeline: Arc<GraphicsPipeline>,
   ) {

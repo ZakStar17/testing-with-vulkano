@@ -5,7 +5,7 @@ use vulkano::device::physical::PhysicalDevice;
 use vulkano::device::Device;
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
-use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass};
+use vulkano::render_pass::{Framebuffer, RenderPass};
 use vulkano::swapchain::Surface;
 use vulkano::swapchain::Swapchain;
 use vulkano::swapchain::SwapchainCreationError;
@@ -16,7 +16,7 @@ pub struct SwapchainData {
   pub image_count: u32,
   pub images: Vec<Arc<SwapchainImage<Window>>>,
   pub render_pass: Arc<RenderPass>,
-  pub framebuffers: Vec<Arc<dyn FramebufferAbstract>>,
+  pub framebuffers: Vec<Arc<Framebuffer>>,
 }
 
 impl SwapchainData {
@@ -59,41 +59,37 @@ impl SwapchainData {
   }
 
   fn get_render_pass(device: Arc<Device>, swapchain: Arc<Swapchain<Window>>) -> Arc<RenderPass> {
-    Arc::new(
-      vulkano::single_pass_renderpass!(
-          device.clone(),
-          attachments: {
-              color: {
-                  load: Clear,
-                  store: Store,
-                  format: swapchain.format(),
-                  samples: 1,
-              }
-          },
-          pass: {
-              color: [color],
-              depth_stencil: {}
-          }
-      )
-      .unwrap(),
+    vulkano::single_pass_renderpass!(
+        device.clone(),
+        attachments: {
+            color: {
+                load: Clear,
+                store: Store,
+                format: swapchain.format(),
+                samples: 1,
+            }
+        },
+        pass: {
+            color: [color],
+            depth_stencil: {}
+        }
     )
+    .unwrap()
   }
 
   fn get_framebuffers(
     images: &[Arc<SwapchainImage<Window>>],
     render_pass: Arc<RenderPass>,
-  ) -> Vec<Arc<dyn FramebufferAbstract>> {
+  ) -> Vec<Arc<Framebuffer>> {
     images
       .iter()
       .map(|image| {
         let view = ImageView::new(image.clone()).unwrap();
-        Arc::new(
-          Framebuffer::start(render_pass.clone())
-            .add(view)
-            .unwrap()
-            .build()
-            .unwrap(),
-        ) as Arc<dyn FramebufferAbstract>
+        Framebuffer::start(render_pass.clone())
+          .add(view)
+          .unwrap()
+          .build()
+          .unwrap()
       })
       .collect::<Vec<_>>()
   }

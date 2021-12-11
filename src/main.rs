@@ -11,7 +11,7 @@ use vulkano::swapchain;
 use vulkano::swapchain::AcquireError;
 use vulkano::sync;
 use vulkano::sync::{FlushError, GpuFuture};
-use winit::event::{ElementState, Event, WindowEvent, MouseScrollDelta};
+use winit::event::{ElementState, Event, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 
 fn main() {
@@ -23,17 +23,10 @@ fn main() {
     let mut previous_frame_end = Some(sync::now(app.program.device.clone()).boxed());
     let start_time = Instant::now();
 
-    let mut frames_drawn_since_last_second = 0;
-    let mut last_second_tested = 0;
+    let mut frame_count = 0;
+    let mut previous_elapsed_millis = 0.0;
 
     println!("Starting main loop");
-
-    {
-        // window configuration
-        let window = app.surface.window();
-        window.set_cursor_grab(true).unwrap();
-        window.set_cursor_visible(false);
-    }
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {
@@ -72,7 +65,7 @@ fn main() {
             app.handle_cursor_moved(position);
         }
         Event::WindowEvent {
-            event: WindowEvent::MouseWheel {delta, ..},
+            event: WindowEvent::MouseWheel { delta, .. },
             ..
         } => {
             if let MouseScrollDelta::LineDelta(_, y) = delta {
@@ -131,14 +124,13 @@ fn main() {
 
             // Update while the gpu executes the frame
             let elapsed = start_time.elapsed();
-            let elapsed_seconds = elapsed.as_secs();
 
-            frames_drawn_since_last_second += 1;
-            if elapsed_seconds != last_second_tested {
-                last_second_tested = elapsed_seconds;
-
-                println!("fps: {}", frames_drawn_since_last_second);
-                frames_drawn_since_last_second = 0;
+            frame_count += 1;
+            if frame_count == 60 {
+                let elapsed_millis = elapsed.as_millis() as f32;
+                println!("fps: {}", 60.0 / ((elapsed_millis - previous_elapsed_millis) / 1000.0));
+                previous_elapsed_millis = elapsed_millis;
+                frame_count = 0;
             }
 
             // Update the buffers on the next frame

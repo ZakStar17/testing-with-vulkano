@@ -86,6 +86,12 @@ impl App {
       y: window_dimensions.height as f32 / 2.0,
     };
 
+    
+    // window configuration
+    let window = surface.window();
+    window.set_cursor_grab(true).unwrap();
+    window.set_cursor_visible(false);
+
     App {
       program,
       vulkan_instance: instance,

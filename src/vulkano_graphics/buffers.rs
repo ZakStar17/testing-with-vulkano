@@ -73,7 +73,7 @@ impl Buffers {
 
         set_builder.add_buffer(buffer.clone()).unwrap();
 
-        Arc::new(set_builder.build().unwrap())
+        set_builder.build().unwrap()
       };
 
       uniforms.push((buffer, descriptor_set));
