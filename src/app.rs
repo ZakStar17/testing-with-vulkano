@@ -1,25 +1,16 @@
-use crate::Camera;
-use crate::VulkanoProgram;
-
-use std::sync::Arc;
-use std::time::Duration;
-
-use cgmath::Matrix3;
-use cgmath::Matrix4;
+use crate::game_objects::{Cube, Square};
+use crate::render::{Camera, RenderLoop};
+use crate::Keys;
+use crate::{Pressed, Released};
 use cgmath::Point3;
-use cgmath::Rad;
-
-use vulkano::device::DeviceExtensions;
-use vulkano::instance::Instance;
-use vulkano::swapchain::Surface;
-use vulkano_win::VkSurfaceBuild;
+use std::time::Duration;
+use winit::dpi::LogicalSize;
 use winit::dpi::PhysicalPosition;
-use winit::event::VirtualKeyCode;
+use winit::event::{ElementState, VirtualKeyCode};
 use winit::event_loop::EventLoop;
-use winit::window::{Window, WindowBuilder};
 
-use crate::vulkano_graphics;
-use crate::vulkano_graphics::QueueFamilies;
+const CAMERA_NORMAL_SPEED: f32 = 2.0;
+const CAMERA_FAST_SPEED: f32 = 10.0;
 
 pub struct Mouse {
   pub delta_x: f32,
@@ -28,127 +19,213 @@ pub struct Mouse {
   getting_grabbed: bool,
 }
 
+// Additional information related to the window
+struct Screen {
+  middle: PhysicalPosition<f32>,
+}
+
+pub struct Scene {
+  pub cube: Cube,
+  pub square: Square,
+}
+
 pub struct App {
-  pub program: VulkanoProgram,
-  pub vulkan_instance: Arc<Instance>,
-  pub surface: Arc<Surface<Window>>,
+  render_loop: RenderLoop,
+  scene: Scene,
+  keys: Keys,
   camera: Camera,
   mouse: Mouse,
-  pressed_keys: [bool; 4],
-  pub aspect_ratio: f32,
-  pub window_half_screen_position: PhysicalPosition<f32>,
+  screen: Screen,
 }
 
 impl App {
   pub fn start(event_loop: &EventLoop<()>) -> Self {
-    let instance = vulkano_graphics::create_instance();
+    let render_loop = RenderLoop::new(event_loop);
 
-    let surface = WindowBuilder::new()
-      .build_vk_surface(&event_loop, instance.clone())
-      .unwrap();
+    // initial window configuration
+    let window = render_loop.get_window();
+    window.set_title("Really cool game");
 
-    let device_extensions = DeviceExtensions {
-      khr_swapchain: true,
-      ..DeviceExtensions::none()
-    };
+    // this will trigger an initial resize
+    window.set_inner_size(LogicalSize::new(600.0f32, 600.0));
 
-    let physical_device =
-      vulkano_graphics::get_physical_device(&instance, &device_extensions, surface.clone());
-
-    let queue_families = QueueFamilies::init(physical_device);
-
-    let program = VulkanoProgram::start(
-      device_extensions,
-      physical_device,
-      &queue_families,
-      surface.clone(),
-    );
-
-    let camera = Camera::new(Point3 {
-      x: 0.0,
-      y: 0.0,
-      z: 0.0,
-    });
-
-    let mouse = Mouse {
-      delta_x: 0.0,
-      delta_y: 0.0,
-      in_window: false,
-      getting_grabbed: true,
-    };
-
-    let pressed_keys = [false, false, false, false];
-
-    let window_dimensions = surface.window().inner_size();
+    let window_dimensions = window.inner_size();
     let aspect_ratio = window_dimensions.width as f32 / window_dimensions.height as f32;
-    let window_half_screen_position = PhysicalPosition {
+    let middle_position = PhysicalPosition {
       x: window_dimensions.width as f32 / 2.0,
       y: window_dimensions.height as f32 / 2.0,
     };
 
-    
-    // window configuration
-    let window = surface.window();
-    window.set_cursor_grab(true).unwrap();
-    window.set_cursor_visible(false);
-
-    App {
-      program,
-      vulkan_instance: instance,
-      surface,
-      camera,
-      mouse,
-      pressed_keys,
+    let camera = Camera::new(
+      Point3 {
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+      },
+      CAMERA_NORMAL_SPEED,
+      0.8,
       aspect_ratio,
-      window_half_screen_position,
+    );
+
+    Self {
+      render_loop: RenderLoop::new(event_loop),
+      scene: Scene {
+        cube: Cube::new(Point3::new(5.0, 1.0, 0.0), [0.0, 0.0, 1.0]),
+        square: Square::new(),
+      },
+      keys: Keys::default(),
+      camera,
+      screen: Screen {
+        middle: middle_position,
+      },
+      mouse: Mouse {
+        delta_x: 0.0,
+        delta_y: 0.0,
+        in_window: false,
+        getting_grabbed: false,
+      },
     }
   }
 
-  // returns true if the window should close
-  pub fn handle_keyboard_input(&mut self, key_code: VirtualKeyCode, is_pressed: bool) -> bool {
+  pub fn update(&mut self, delta_time: &Duration) {
+    self.camera.handle_keys(&self.keys, delta_time);
+    self.camera.handle_mouse_movement(&self.mouse);
+    self.mouse.delta_x = 0.0;
+    self.mouse.delta_y = 0.0;
+
+    self.update_square_position((delta_time.as_micros() as f32) / 1000000.0);
+
+    self.render_loop.update(&self.camera, &self.scene);
+  }
+
+  fn update_square_position(&mut self, delta_seconds: f32) {
+    if self.keys.up_key == Pressed && self.keys.s == Released {
+      self.scene.square.move_up(delta_seconds)
+    }
+    if self.keys.down_key == Pressed && self.keys.w == Released {
+      self.scene.square.move_down(delta_seconds)
+    }
+    if self.keys.left_key == Pressed && self.keys.d == Released {
+      self.scene.square.move_left(delta_seconds)
+    }
+    if self.keys.right_key == Pressed && self.keys.a == Released {
+      self.scene.square.move_right(delta_seconds)
+    }
+  }
+
+  pub fn handle_keyboard_input(&mut self, key_code: VirtualKeyCode, state: ElementState) -> bool {
+    let state = match state {
+      ElementState::Pressed => Pressed,
+      ElementState::Released => Released,
+    };
+
+    let cube_obj = &mut self.scene.cube.object;
+
     match key_code {
-      VirtualKeyCode::W => self.pressed_keys[0] = is_pressed,
-      VirtualKeyCode::A => self.pressed_keys[1] = is_pressed,
-      VirtualKeyCode::S => self.pressed_keys[2] = is_pressed,
-      VirtualKeyCode::D => self.pressed_keys[3] = is_pressed,
-      VirtualKeyCode::M => {
-        if !is_pressed {
+      VirtualKeyCode::W => self.keys.w = state,
+      VirtualKeyCode::A => self.keys.a = state,
+      VirtualKeyCode::S => self.keys.s = state,
+      VirtualKeyCode::D => self.keys.d = state,
+      VirtualKeyCode::Space => self.keys.space = state,
+      VirtualKeyCode::LControl => self.keys.l_ctrl = state,
+      VirtualKeyCode::LShift => {
+        if state == Pressed {
+          self.camera.speed = CAMERA_FAST_SPEED;
+        } else {
+          self.camera.speed = CAMERA_NORMAL_SPEED;
+        }
+      }
+      VirtualKeyCode::Up => self.keys.up_key = state,
+      VirtualKeyCode::Down => self.keys.down_key = state,
+      VirtualKeyCode::Left => self.keys.left_key = state,
+      VirtualKeyCode::Right => self.keys.right_key = state,
+      VirtualKeyCode::C => {
+        if state == Released {
           self.toggle_cursor_grab();
         }
       }
-      _ => (),
+      VirtualKeyCode::Numpad8 => {
+        if state == Released {
+          let mut previous = cube_obj.get_position();
+          previous.x += 1.0;
+          cube_obj.update_position(previous);
+        }
+      }
+      VirtualKeyCode::Numpad2 => {
+        if state == Released {
+          let mut previous = cube_obj.get_position();
+          previous.x -= 1.0;
+          cube_obj.update_position(previous);
+        }
+      }
+      VirtualKeyCode::Numpad4 => {
+        if state == Released {
+          let mut previous = cube_obj.get_position();
+          previous.z -= 1.0;
+          cube_obj.update_position(previous);
+        }
+      }
+      VirtualKeyCode::Numpad6 => {
+        if state == Released {
+          let mut previous = cube_obj.get_position();
+          previous.z += 1.0;
+          cube_obj.update_position(previous);
+        }
+      }
+      VirtualKeyCode::Numpad9 => {
+        if state == Released {
+          let mut previous = cube_obj.get_position();
+          previous.y -= 1.0;
+          cube_obj.update_position(previous);
+        }
+      }
+      VirtualKeyCode::Numpad3 => {
+        if state == Released {
+          let mut previous = cube_obj.get_position();
+          previous.y += 1.0;
+          cube_obj.update_position(previous);
+        }
+      }
+      VirtualKeyCode::Numpad5 => {
+        if state == Released {
+          self.scene.cube.change_to_random_color();
+        }
+      }
+      VirtualKeyCode::Escape => return true,
+      _ => {}
     }
-    match key_code {
-      VirtualKeyCode::Escape => true,
-      _ => false,
-    }
+
+    false
   }
 
-  pub fn handle_cursor_moved(&mut self, position: PhysicalPosition<f64>) {
+  pub fn handle_window_resize(&mut self) {
+    self.render_loop.handle_window_resize();
+    self.camera.set_aspect_ratio(self.get_aspect_ratio());
+  }
+
+  pub fn handle_mouse_movement(&mut self, position: PhysicalPosition<f64>) {
     if self.mouse.getting_grabbed {
       if self.mouse.in_window {
-        self.mouse.delta_x += position.x as f32 - self.window_half_screen_position.x;
-        self.mouse.delta_y += position.y as f32 - self.window_half_screen_position.y;
+        self.mouse.delta_x += position.x as f32 - self.screen.middle.x;
+        self.mouse.delta_y += position.y as f32 - self.screen.middle.y;
       }
       self
-        .surface
-        .window()
-        .set_cursor_position(self.window_half_screen_position)
+        .render_loop
+        .get_window()
+        .set_cursor_position(self.screen.middle)
         .unwrap();
     }
   }
 
-  pub fn handle_mouse_wheel(&mut self, delta_y: f32) {
-    self.camera.handle_zoom(delta_y);
+  pub fn handle_mouse_wheel(&mut self, delta: f32) {
+    self.camera.handle_zoom(delta);
   }
 
   pub fn handle_cursor_entered_window(&mut self) {
     if self.mouse.getting_grabbed {
-      let window = self.surface.window();
+      let window = self.render_loop.get_window();
       window.set_cursor_grab(true).unwrap();
-      window
-        .set_cursor_position(self.window_half_screen_position)
-        .unwrap();
+      window.set_cursor_position(self.screen.middle).unwrap();
       self.mouse.delta_x = 0.0;
       self.mouse.delta_y = 0.0;
     }
@@ -157,7 +234,7 @@ impl App {
 
   pub fn handle_cursor_left_window(&mut self) {
     if self.mouse.getting_grabbed {
-      let window = self.surface.window();
+      let window = self.render_loop.get_window();
       window.set_cursor_grab(false).unwrap();
     }
 
@@ -165,7 +242,7 @@ impl App {
   }
 
   fn toggle_cursor_grab(&mut self) {
-    let window = self.surface.window();
+    let window = self.render_loop.get_window();
     if self.mouse.getting_grabbed {
       self.mouse.getting_grabbed = false;
 
@@ -177,43 +254,14 @@ impl App {
       window.set_cursor_grab(true).unwrap();
       window.set_cursor_visible(false);
 
-      window
-        .set_cursor_position(self.window_half_screen_position)
-        .unwrap();
+      window.set_cursor_position(self.screen.middle).unwrap();
       self.mouse.delta_x = 0.0;
       self.mouse.delta_y = 0.0;
     }
   }
 
-  pub fn update(&mut self, elapsed_time: &Duration, n_image: usize) {
-    self.camera.handle_keys(&self.pressed_keys, elapsed_time);
-    self.camera.handle_mouse_movement(&self.mouse);
-    self.mouse.delta_x = 0.0;
-    self.mouse.delta_y = 0.0;
-
-    let proj = self.camera.get_projection_matrix(self.aspect_ratio);
-    let view = self.camera.get_view_matrix();
-
-    let rotation =
-      elapsed_time.as_secs() as f64 + elapsed_time.subsec_nanos() as f64 / 1_000_000_000.0;
-    let rotation = Matrix3::from_angle_y(Rad(rotation as f32));
-    let scale = Matrix4::from_scale(1.0);
-    let model = scale * Matrix4::from(rotation);
-
-    let matrix = proj * view * model;
-    self.program.update(elapsed_time, n_image, matrix);
-  }
-
-  pub fn handle_window_update(&mut self) {
-    let new_window_dimensions = self.surface.window().inner_size();
-
-    self.window_half_screen_position = PhysicalPosition {
-      x: new_window_dimensions.width as f32 / 2.0,
-      y: new_window_dimensions.height as f32 / 2.0,
-    };
-
-    self.aspect_ratio = new_window_dimensions.width as f32 / new_window_dimensions.height as f32;
-
-    self.program.handle_window_update(new_window_dimensions);
+  fn get_aspect_ratio(&self) -> f32 {
+    let window_size = self.render_loop.get_window().inner_size();
+    window_size.width as f32 / window_size.height as f32
   }
 }
