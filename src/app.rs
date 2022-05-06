@@ -139,60 +139,38 @@ impl App {
       VirtualKeyCode::Down => self.keys.down_key = state,
       VirtualKeyCode::Left => self.keys.left_key = state,
       VirtualKeyCode::Right => self.keys.right_key = state,
-      VirtualKeyCode::C => {
-        if state == Released {
-          self.toggle_cursor_grab();
-        }
-      }
-      VirtualKeyCode::Numpad8 => {
-        if state == Released {
-          let mut previous = cube_obj.get_position();
-          previous.x += 1.0;
-          cube_obj.update_position(previous);
-        }
-      }
-      VirtualKeyCode::Numpad2 => {
-        if state == Released {
-          let mut previous = cube_obj.get_position();
-          previous.x -= 1.0;
-          cube_obj.update_position(previous);
-        }
-      }
-      VirtualKeyCode::Numpad4 => {
-        if state == Released {
-          let mut previous = cube_obj.get_position();
-          previous.z -= 1.0;
-          cube_obj.update_position(previous);
-        }
-      }
-      VirtualKeyCode::Numpad6 => {
-        if state == Released {
-          let mut previous = cube_obj.get_position();
-          previous.z += 1.0;
-          cube_obj.update_position(previous);
-        }
-      }
-      VirtualKeyCode::Numpad9 => {
-        if state == Released {
-          let mut previous = cube_obj.get_position();
-          previous.y -= 1.0;
-          cube_obj.update_position(previous);
-        }
-      }
-      VirtualKeyCode::Numpad3 => {
-        if state == Released {
-          let mut previous = cube_obj.get_position();
-          previous.y += 1.0;
-          cube_obj.update_position(previous);
-        }
-      }
-      VirtualKeyCode::Numpad5 => {
-        if state == Released {
-          self.scene.cube.change_to_random_color();
-        }
-      }
       VirtualKeyCode::Escape => return true,
       _ => {}
+    }
+    
+    if state == Released {
+      match key_code {
+        VirtualKeyCode::C => {
+          self.toggle_cursor_grab();
+        }
+        VirtualKeyCode::Numpad8 => {
+          cube_obj.move_relative_x(1.0);
+        }
+        VirtualKeyCode::Numpad2 => {
+          cube_obj.move_relative_x(-1.0);
+        }
+        VirtualKeyCode::Numpad4 => {
+          cube_obj.move_relative_z(-1.0);
+        }
+        VirtualKeyCode::Numpad6 => {
+          cube_obj.move_relative_z(1.0);
+        }
+        VirtualKeyCode::Numpad9 => {
+          cube_obj.move_relative_y(-1.0);
+        }
+        VirtualKeyCode::Numpad3 => {
+          cube_obj.move_relative_y(1.0);
+        }
+        VirtualKeyCode::Numpad5 => {
+          self.scene.cube.change_to_random_color();
+        }
+        _ => {}
+      }
     }
 
     false

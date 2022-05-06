@@ -1,8 +1,12 @@
+use crate::game_objects::Renderable3dObject;
+use crate::game_objects::RenderableIn3d;
+use cgmath::Matrix4;
+use cgmath::Point3;
 use rand::Rng;
 
 pub struct Square {
   pub color: [f32; 3],
-  pub position: [f32; 2],
+  pub object: Renderable3dObject,
   pub speed: f32,
 }
 
@@ -10,7 +14,7 @@ impl Square {
   pub fn new() -> Self {
     Self {
       color: [1.0, 0.0, 0.0],
-      position: [0.0, 0.0],
+      object: Renderable3dObject::new(Point3::new(0.0, 0.0, 0.0)),
       speed: 1.3,
     }
   }
@@ -21,18 +25,32 @@ impl Square {
   }
 
   pub fn move_right(&mut self, seconds_passed: f32) {
-    self.position[0] += seconds_passed * self.speed
+    self
+      .object
+      .move_relative(Point3::new(seconds_passed * self.speed, 0.0, 0.0));
   }
 
   pub fn move_left(&mut self, seconds_passed: f32) {
-    self.position[0] -= seconds_passed * self.speed
+    self
+      .object
+      .move_relative(Point3::new(seconds_passed * -self.speed, 0.0, 0.0));
   }
 
   pub fn move_up(&mut self, seconds_passed: f32) {
-    self.position[1] -= seconds_passed * self.speed
+    self
+      .object
+      .move_relative(Point3::new(0.0, seconds_passed * -self.speed, 0.0));
   }
 
   pub fn move_down(&mut self, seconds_passed: f32) {
-    self.position[1] += seconds_passed * self.speed
+    self
+      .object
+      .move_relative(Point3::new(0.0, seconds_passed * self.speed, 0.0));
+  }
+}
+
+impl RenderableIn3d for Square {
+  fn get_model_matrix(&self) -> Matrix4<f32> {
+    self.object.get_model_matrix()
   }
 }

@@ -1,13 +1,10 @@
-use crate::app::Scene;
 use crate::game_objects::RenderableIn3d;
-use crate::render::models::CubeModel;
-use crate::render::shaders::simple_cube;
+use crate::app::Scene;
+use crate::render::shaders::single_colored;
 use crate::render::vulkano_objects;
-use crate::render::vulkano_objects::buffers::ImmutableBuffers;
+use crate::render::BufferContainer;
 use crate::render::Camera;
-use crate::render::Vertex3d;
 use std::sync::Arc;
-use vulkano::command_buffer::{CommandBufferExecFuture, PrimaryAutoCommandBuffer};
 use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo};
 use vulkano::image::SwapchainImage;
 use vulkano::instance::Instance;
@@ -19,20 +16,12 @@ use vulkano::swapchain::{
   self, AcquireError, PresentFuture, Surface, Swapchain, SwapchainAcquireFuture,
   SwapchainCreateInfo, SwapchainCreationError,
 };
-use vulkano::sync::{self, FenceSignalFuture, FlushError, GpuFuture, JoinFuture, NowFuture};
+use vulkano::sync::{self, FenceSignalFuture, FlushError, GpuFuture, NowFuture};
 use vulkano_win::VkSurfaceBuild;
 use winit::event_loop::EventLoop;
 use winit::window::{Window, WindowBuilder};
 
-pub type Fence = FenceSignalFuture<
-  PresentFuture<
-    CommandBufferExecFuture<
-      JoinFuture<Box<dyn GpuFuture>, SwapchainAcquireFuture<Window>>,
-      Arc<PrimaryAutoCommandBuffer>,
-    >,
-    Window,
-  >,
->;
+pub type Fence = FenceSignalFuture<PresentFuture<Box<dyn GpuFuture>, Window>>;
 
 pub struct Renderer {
   surface: Arc<Surface<Window>>,
@@ -43,12 +32,11 @@ pub struct Renderer {
   images: Vec<Arc<SwapchainImage<winit::window::Window>>>,
   render_pass: Arc<RenderPass>,
   framebuffers: Vec<Arc<Framebuffer>>,
-  buffers: ImmutableBuffers<Vertex3d, simple_cube::vs::ty::Data>,
   vertex_shader: Arc<ShaderModule>,
   fragment_shader: Arc<ShaderModule>,
   viewport: Viewport,
   pipeline: Arc<GraphicsPipeline>,
-  command_buffers: Vec<Arc<PrimaryAutoCommandBuffer>>,
+  buffer_container: BufferContainer<single_colored::vs::ty::Data>,
 }
 
 impl<'a> Renderer {
@@ -98,9 +86,9 @@ impl<'a> Renderer {
     );
 
     let vertex_shader =
-      simple_cube::vs::load(device.clone()).expect("failed to create shader module");
+      single_colored::vs::load(device.clone()).expect("failed to create shader module");
     let fragment_shader =
-      simple_cube::fs::load(device.clone()).expect("failed to create shader module");
+      single_colored::fs::load(device.clone()).expect("failed to create shader module");
 
     let viewport = Viewport {
       origin: [0.0, 0.0],
@@ -116,19 +104,14 @@ impl<'a> Renderer {
       viewport.clone(),
     );
 
-    let buffers = ImmutableBuffers::initialize::<CubeModel>(
-      device.clone(),
-      pipeline.layout().set_layouts().get(0).unwrap().clone(),
-      images.len(),
-      queue.clone(),
-    );
+    let descriptor_set_layout = pipeline.layout().set_layouts().get(0).unwrap().clone();
 
-    let command_buffers = vulkano_objects::command_buffers::create_simple_command_buffers(
+    let buffer_container = BufferContainer::new::<single_colored::S>(
       device.clone(),
-      queue.clone(),
       pipeline.clone(),
+      descriptor_set_layout,
       &framebuffers,
-      &buffers,
+      queue.clone(),
     );
 
     Self {
@@ -139,12 +122,11 @@ impl<'a> Renderer {
       images,
       render_pass,
       framebuffers,
-      buffers,
       vertex_shader,
       fragment_shader,
       viewport,
       pipeline,
-      command_buffers,
+      buffer_container,
       _instance: instance,
     }
   }
@@ -178,12 +160,11 @@ impl<'a> Renderer {
       self.viewport.clone(),
     );
 
-    self.command_buffers = vulkano_objects::command_buffers::create_simple_command_buffers(
+    self.buffer_container.handle_window_resize(
       self.device.clone(),
-      self.queue.clone(),
       self.pipeline.clone(),
       &self.framebuffers,
-      &self.buffers,
+      self.queue.clone(),
     );
   }
 
@@ -210,27 +191,37 @@ impl<'a> Renderer {
     swapchain_acquire_future: SwapchainAcquireFuture<Window>,
     image_i: usize,
   ) -> Result<Fence, FlushError> {
-    previous_future
-      .join(swapchain_acquire_future)
-      .then_execute(self.queue.clone(), self.command_buffers[image_i].clone())
-      .unwrap()
+    // join with swapchain future, draw and then present, signal fence and flush
+    let boxed: Box<dyn GpuFuture> = Box::new(
+      previous_future
+        .join(swapchain_acquire_future)
+        .then_execute(
+          self.queue.clone(),
+          self.buffer_container.command_buffers[image_i].clone(),
+        )
+        .unwrap(),
+    );
+
+    boxed
       .then_swapchain_present(self.queue.clone(), self.swapchain.clone(), image_i)
       .then_signal_fence_and_flush()
   }
 
   pub fn update_uniform(&self, index: usize, camera: &Camera, scene_objects: &Scene) {
+    // todo: there is no way currently to update both cube and square uniforms
     let projection_view = camera.get_projection_view();
+    {
+      let cube = &scene_objects.cube;
+      let cube_matrix = projection_view * cube.get_model_matrix();
 
-    let cube = &scene_objects.cube;
-    let cube_matrix = projection_view * cube.get_model_matrix();
+      let mut uniform_content = self.buffer_container.buffers.uniforms[index]
+        .0
+        .write()
+        .unwrap_or_else(|e| panic!("Failed to write to uniform buffer\n{}", e));
 
-    let mut uniform_content = self.buffers.uniforms[index]
-      .0
-      .write()
-      .unwrap_or_else(|e| panic!("Failed to write to uniform buffer\n{}", e));
-
-    uniform_content.color = cube.color;
-    uniform_content.matrix = cube_matrix.into();
+      uniform_content.color = cube.color;
+      uniform_content.matrix = cube_matrix.into();
+    }
   }
 
   pub fn get_surface_window(&self) -> &Window {

@@ -1,5 +1,5 @@
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone, Copy)]
 pub enum KeyState {
   Pressed,
   Released,

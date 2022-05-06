@@ -1,3 +1,4 @@
+use crate::other::add_points;
 use cgmath::{EuclideanSpace, Euler, Matrix4, Point3, Rad};
 
 pub trait RenderableIn3d {
@@ -66,29 +67,50 @@ impl Renderable3dObject {
     self.scale
   }
 
-  pub fn update_position(&mut self, new_position: Point3<f32>) {
+  pub fn move_relative(&mut self, relative: Point3<f32>) {
+    self.position = add_points(self.position, relative);
+    self.update_translation_matrix();
+    self.update_model_matrix();
+  }
+
+  // todo: too much ambiguous code
+  pub fn move_relative_x(&mut self, relative_x: f32) {
+    self.position.x += relative_x;
+    self.update_translation_matrix();
+    self.update_model_matrix();
+  }
+
+  pub fn move_relative_y(&mut self, relative_y: f32) {
+    self.position.y += relative_y;
+    self.update_translation_matrix();
+    self.update_model_matrix();
+  }
+
+  pub fn move_relative_z(&mut self, relative_z: f32) {
+    self.position.z += relative_z;
+    self.update_translation_matrix();
+    self.update_model_matrix();
+  }
+
+  pub fn r#move(&mut self, new_position: Point3<f32>) {
     self.position = new_position;
     self.update_translation_matrix();
     self.update_model_matrix();
   }
 
-  pub fn update_rotation(&mut self, new_rotation: Euler<Rad<f32>>) {
+  pub fn rotate(&mut self, new_rotation: Euler<Rad<f32>>) {
     self.rotation = new_rotation;
     self.update_rotation_matrix();
     self.update_model_matrix();
   }
 
-  pub fn update_scale(&mut self, new_scale: f32) {
+  pub fn scale(&mut self, new_scale: f32) {
     self.scale = new_scale;
     self.update_scale_matrix();
     self.update_model_matrix();
   }
 
-  pub fn update_position_rotation(
-    &mut self,
-    new_position: Point3<f32>,
-    new_rotation: Euler<Rad<f32>>,
-  ) {
+  pub fn move_and_rotate(&mut self, new_position: Point3<f32>, new_rotation: Euler<Rad<f32>>) {
     self.position = new_position;
     self.rotation = new_rotation;
     self.update_translation_matrix();

@@ -1,38 +1,39 @@
 use crate::render::models::Model;
-use crate::render::shaders::movable_square;
-use crate::render::Vertex2d;
+use crate::render::Vertex3d;
 
-pub struct SquareModel;
+pub struct SquareModel {
+  vertices: Vec<Vertex3d>,
+  indices: Vec<u16>,
+}
 
-type UniformData = movable_square::vs::ty::Data;
-
-impl Model<Vertex2d, UniformData> for SquareModel {
-  fn get_vertices() -> Vec<Vertex2d> {
-    vec![
-      Vertex2d {
-        position: [-0.25, -0.25],
-      },
-      Vertex2d {
-        position: [0.25, -0.25],
-      },
-      Vertex2d {
-        position: [-0.25, 0.25],
-      },
-      Vertex2d {
-        position: [0.25, 0.25],
-      },
-    ]
-  }
-
-  fn get_indices() -> Vec<u16> {
-    vec![0, 1, 2, 1, 2, 3]
-  }
-
-  fn get_initial_uniform_data() -> UniformData {
-    UniformData {
-      color: [0.0, 0.0, 0.0],
-      position: [0.0, 0.0],
-      _dummy0: [0, 0, 0, 0],
+impl SquareModel {
+  pub fn new() -> Self {
+    Self {
+      vertices: vec![
+        Vertex3d {
+          position: [-0.25, -0.25, 0.0],
+        },
+        Vertex3d {
+          position: [0.25, -0.25, 0.0],
+        },
+        Vertex3d {
+          position: [-0.25, 0.25, 0.0],
+        },
+        Vertex3d {
+          position: [0.25, 0.25, 0.0],
+        },
+      ],
+      indices: vec![0, 1, 2, 1, 2, 3],
     }
+  }
+}
+
+impl Model<Vertex3d> for SquareModel {
+  fn get_vertices(&self) -> &Vec<Vertex3d> {
+    &self.vertices
+  }
+
+  fn get_indices(&self) -> &Vec<u16> {
+    &self.indices
   }
 }

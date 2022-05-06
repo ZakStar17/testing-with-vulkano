@@ -35,7 +35,6 @@ pub fn create_simple_command_buffers<
       .unwrap();
 
       let index_buffer = buffers.get_index();
-      let index_buffer_length = index_buffer.len();
 
       builder
         .begin_render_pass(
@@ -52,11 +51,20 @@ pub fn create_simple_command_buffers<
           buffers.get_uniform_descriptor_set(i),
         )
         .bind_vertex_buffers(0, buffers.get_vertex())
-        .bind_index_buffer(index_buffer)
-        .draw_indexed(index_buffer_length as u32, 1, 0, 0, 0)
-        .unwrap()
-        .end_render_pass()
-        .unwrap();
+        .bind_index_buffer(index_buffer);
+
+      let mut index_offset = 0;
+      let mut vertex_offset = 0;
+      for (index_len, vertex_len) in buffers.get_model_lengths().iter() {
+        builder
+          .draw_indexed(*index_len, 1, index_offset, vertex_offset, 0)
+          .unwrap();
+
+        index_offset += *index_len;
+        vertex_offset += *vertex_len;
+      }
+
+      builder.end_render_pass().unwrap();
 
       Arc::new(builder.build().unwrap())
     })

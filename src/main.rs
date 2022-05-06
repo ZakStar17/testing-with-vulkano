@@ -1,7 +1,8 @@
 pub mod app;
 pub mod game_objects;
 pub mod render;
-pub mod keys;
+mod keys;
+pub mod other;
 
 pub use keys::KeyState::{Pressed, Released};
 pub use keys::Keys;
