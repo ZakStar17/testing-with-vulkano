@@ -1,5 +1,5 @@
-use crate::game_objects::RenderableIn3d;
 use crate::app::Scene;
+use crate::game_objects::RenderableIn3d;
 use crate::render::shaders::single_colored;
 use crate::render::vulkano_objects;
 use crate::render::BufferContainer;
@@ -36,7 +36,7 @@ pub struct Renderer {
   fragment_shader: Arc<ShaderModule>,
   viewport: Viewport,
   pipeline: Arc<GraphicsPipeline>,
-  buffer_container: BufferContainer<single_colored::vs::ty::Data>,
+  buffer_container: BufferContainer,
 }
 
 impl<'a> Renderer {
@@ -49,6 +49,7 @@ impl<'a> Renderer {
 
     let device_extensions = DeviceExtensions {
       khr_swapchain: true,
+      khr_storage_buffer_storage_class: true,
       ..DeviceExtensions::none()
     };
 
@@ -106,7 +107,7 @@ impl<'a> Renderer {
 
     let descriptor_set_layout = pipeline.layout().set_layouts().get(0).unwrap().clone();
 
-    let buffer_container = BufferContainer::new::<single_colored::S>(
+    let buffer_container = BufferContainer::new::<single_colored::vs::ty::Data, single_colored::S>(
       device.clone(),
       pipeline.clone(),
       descriptor_set_layout,
@@ -207,21 +208,26 @@ impl<'a> Renderer {
       .then_signal_fence_and_flush()
   }
 
-  pub fn update_uniform(&self, index: usize, camera: &Camera, scene_objects: &Scene) {
-    // todo: there is no way currently to update both cube and square uniforms
+  pub fn update_uniform(&mut self, buffer_i: usize, camera: &Camera, scene_objects: &Scene) {
     let projection_view = camera.get_projection_view();
-    {
-      let cube = &scene_objects.cube;
-      let cube_matrix = projection_view * cube.get_model_matrix();
 
-      let mut uniform_content = self.buffer_container.buffers.uniforms[index]
-        .0
-        .write()
-        .unwrap_or_else(|e| panic!("Failed to write to uniform buffer\n{}", e));
+    let cube = &scene_objects.cube;
+    let cube_matrix = projection_view * cube.get_model_matrix();
+    let cube_data = single_colored::vs::ty::Data {
+      color: cube.color,
+      matrix: cube_matrix.into(),
+    };
 
-      uniform_content.color = cube.color;
-      uniform_content.matrix = cube_matrix.into();
-    }
+    let square = &scene_objects.square;
+    let square_matrix = projection_view * square.get_model_matrix();
+    let square_data = single_colored::vs::ty::Data {
+      color: square.color,
+      matrix: square_matrix.into(),
+    };
+
+    self
+      .buffer_container
+      .update_uniform(buffer_i, cube_data, square_data);
   }
 
   pub fn get_surface_window(&self) -> &Window {
