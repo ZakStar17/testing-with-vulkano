@@ -2,8 +2,7 @@ use std::f32::consts::PI;
 
 use cgmath::{InnerSpace, Matrix4, PerspectiveFov, Point3, Rad, Vector3};
 
-use crate::{Pressed, Keys};
-use crate::app::Mouse;
+use crate::{app::Mouse, Keys, Pressed};
 
 const HALF_PI: f32 = PI / 2.0;
 

@@ -1,12 +1,16 @@
 use std::sync::Arc;
 
-use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType, QueueFamily};
-use vulkano::device::DeviceExtensions;
-use vulkano::instance::Instance;
-use vulkano::swapchain::Surface;
+use vulkano::{
+  device::{
+    physical::{PhysicalDevice, PhysicalDeviceType, QueueFamily},
+    DeviceExtensions,
+  },
+  instance::Instance,
+  swapchain::Surface,
+};
 use winit::window::Window;
 
-pub fn select_physical_device<'a>(
+pub fn select<'a>(
   instance: &'a Arc<Instance>,
   surface: Arc<Surface<Window>>,
   device_extensions: &DeviceExtensions,

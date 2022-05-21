@@ -1,13 +1,15 @@
-use crate::game_objects::{Cube, Square};
-use crate::render::{Camera, RenderLoop};
-use crate::Keys;
-use crate::{Pressed, Released};
+use crate::{
+  game_objects::{Cube, Square},
+  render::{Camera, RenderLoop},
+  Keys, Pressed, Released,
+};
 use cgmath::Point3;
 use std::time::Duration;
-use winit::dpi::LogicalSize;
-use winit::dpi::PhysicalPosition;
-use winit::event::{ElementState, VirtualKeyCode};
-use winit::event_loop::EventLoop;
+use winit::{
+  dpi::{LogicalSize, PhysicalPosition},
+  event::{ElementState, VirtualKeyCode},
+  event_loop::EventLoop,
+};
 
 const CAMERA_NORMAL_SPEED: f32 = 2.0;
 const CAMERA_FAST_SPEED: f32 = 10.0;
@@ -25,7 +27,8 @@ struct Screen {
 }
 
 pub struct Scene {
-  pub cube: Cube,
+  pub cube1: Cube,
+  pub cube2: Cube,
   pub square: Square,
 }
 
@@ -70,7 +73,8 @@ impl App {
     Self {
       render_loop: RenderLoop::new(event_loop),
       scene: Scene {
-        cube: Cube::new(Point3::new(5.0, 1.0, 0.0), [0.0, 0.0, 1.0]),
+        cube1: Cube::new(Point3::new(5.0, 1.0, 0.0), [0.0, 0.0, 1.0]),
+        cube2: Cube::new(Point3::new(0.0, 0.0, 0.0), [0.0, 1.0, 0.0]),
         square: Square::new(),
       },
       keys: Keys::default(),
@@ -119,7 +123,7 @@ impl App {
       ElementState::Released => Released,
     };
 
-    let cube_obj = &mut self.scene.cube.object;
+    let cube_obj = &mut self.scene.cube1.object;
 
     match key_code {
       VirtualKeyCode::W => self.keys.w = state,
@@ -142,7 +146,7 @@ impl App {
       VirtualKeyCode::Escape => return true,
       _ => {}
     }
-    
+
     if state == Released {
       match key_code {
         VirtualKeyCode::C => {
@@ -167,7 +171,7 @@ impl App {
           cube_obj.move_relative_y(1.0);
         }
         VirtualKeyCode::Numpad5 => {
-          self.scene.cube.change_to_random_color();
+          self.scene.cube1.change_to_random_color();
         }
         _ => {}
       }

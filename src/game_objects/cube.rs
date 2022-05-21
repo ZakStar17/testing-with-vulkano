@@ -1,9 +1,7 @@
-use cgmath::Matrix4;
-use cgmath::Point3;
+use cgmath::{Matrix4, Point3};
 use rand::Rng;
 
-use crate::game_objects::Renderable3dObject;
-use crate::game_objects::RenderableIn3d;
+use crate::game_objects::{Renderable3dObject, RenderableIn3d};
 
 pub struct Cube {
   pub color: [f32; 3],

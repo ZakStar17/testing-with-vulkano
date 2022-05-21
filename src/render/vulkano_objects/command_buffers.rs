@@ -1,20 +1,20 @@
 use std::sync::Arc;
 
-use vulkano::buffer::TypedBufferAccess;
-use vulkano::command_buffer::{
-  AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer, SubpassContents,
+use vulkano::{
+  buffer::TypedBufferAccess,
+  command_buffer::{
+    AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer, SubpassContents,
+  },
+  device::{Device, Queue},
+  pipeline::{
+    graphics::vertex_input::VertexBuffersCollection, GraphicsPipeline, Pipeline, PipelineBindPoint,
+  },
+  render_pass::Framebuffer,
 };
-use vulkano::device::{Device, Queue};
-use vulkano::pipeline::graphics::vertex_input::VertexBuffersCollection;
-use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
-use vulkano::render_pass::Framebuffer;
 
 use crate::render::vulkano_objects::buffers::Buffers;
 
-pub fn create_simple_command_buffers<
-  Vb: VertexBuffersCollection,
-  Ib: TypedBufferAccess<Content = [u16]> + 'static
->(
+pub fn create<Vb: VertexBuffersCollection, Ib: TypedBufferAccess<Content = [u16]> + 'static>(
   device: Arc<Device>,
   queue: Arc<Queue>,
   pipeline: Arc<GraphicsPipeline>,

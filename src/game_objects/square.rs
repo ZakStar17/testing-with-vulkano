@@ -1,7 +1,5 @@
-use crate::game_objects::Renderable3dObject;
-use crate::game_objects::RenderableIn3d;
-use cgmath::Matrix4;
-use cgmath::Point3;
+use crate::game_objects::{Renderable3dObject, RenderableIn3d};
+use cgmath::{Matrix4, Point3};
 use rand::Rng;
 
 pub struct Square {

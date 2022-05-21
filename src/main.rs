@@ -1,16 +1,20 @@
 pub mod app;
 pub mod game_objects;
-pub mod render;
 mod keys;
 pub mod other;
+pub mod render;
 
-pub use keys::KeyState::{Pressed, Released};
-pub use keys::Keys;
+pub use keys::{
+  KeyState::{Pressed, Released},
+  Keys,
+};
 
 use std::time::{Duration, Instant};
 
-use winit::event::{Event, MouseScrollDelta, WindowEvent};
-use winit::event_loop::{ControlFlow, EventLoop};
+use winit::{
+  event::{Event, MouseScrollDelta, WindowEvent},
+  event_loop::{ControlFlow, EventLoop},
+};
 
 use crate::app::App;
 

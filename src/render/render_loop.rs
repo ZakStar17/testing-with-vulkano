@@ -1,10 +1,10 @@
-use crate::app::Scene;
-use crate::render::Camera;
+use crate::{app::Scene, render::Camera};
 use std::sync::Arc;
-use vulkano::swapchain::AcquireError;
-use vulkano::sync::{FlushError, GpuFuture};
-use winit::event_loop::EventLoop;
-use winit::window::Window;
+use vulkano::{
+  swapchain::AcquireError,
+  sync::{FlushError, GpuFuture},
+};
+use winit::{event_loop::EventLoop, window::Window};
 
 use crate::render::renderer::{Fence, Renderer};
 

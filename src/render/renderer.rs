@@ -1,25 +1,28 @@
-use crate::app::Scene;
-use crate::game_objects::RenderableIn3d;
-use crate::render::shaders::single_colored;
-use crate::render::vulkano_objects;
-use crate::render::BufferContainer;
-use crate::render::Camera;
-use std::sync::Arc;
-use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo};
-use vulkano::image::SwapchainImage;
-use vulkano::instance::Instance;
-use vulkano::pipeline::graphics::viewport::Viewport;
-use vulkano::pipeline::{GraphicsPipeline, Pipeline};
-use vulkano::render_pass::{Framebuffer, RenderPass};
-use vulkano::shader::ShaderModule;
-use vulkano::swapchain::{
-  self, AcquireError, PresentFuture, Surface, Swapchain, SwapchainAcquireFuture,
-  SwapchainCreateInfo, SwapchainCreationError,
+use crate::{
+  app::Scene,
+  game_objects::RenderableIn3d,
+  render::{shaders::single_colored, vulkano_objects, BufferContainer, Camera},
 };
-use vulkano::sync::{self, FenceSignalFuture, FlushError, GpuFuture, NowFuture};
+
+use std::sync::Arc;
+use vulkano::{
+  device::{Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo},
+  image::SwapchainImage,
+  instance::Instance,
+  pipeline::{graphics::viewport::Viewport, GraphicsPipeline, Pipeline},
+  render_pass::{Framebuffer, RenderPass},
+  shader::ShaderModule,
+  swapchain::{
+    self, AcquireError, PresentFuture, Surface, Swapchain, SwapchainAcquireFuture,
+    SwapchainCreateInfo, SwapchainCreationError,
+  },
+  sync::{self, FenceSignalFuture, FlushError, GpuFuture, NowFuture},
+};
 use vulkano_win::VkSurfaceBuild;
-use winit::event_loop::EventLoop;
-use winit::window::{Window, WindowBuilder};
+use winit::{
+  event_loop::EventLoop,
+  window::{Window, WindowBuilder},
+};
 
 pub type Fence = FenceSignalFuture<PresentFuture<Box<dyn GpuFuture>, Window>>;
 
@@ -41,7 +44,7 @@ pub struct Renderer {
 
 impl<'a> Renderer {
   pub fn initialize(event_loop: &EventLoop<()>) -> Self {
-    let instance = vulkano_objects::instance::get_instance();
+    let instance = vulkano_objects::instance::create();
 
     let surface = WindowBuilder::new()
       .build_vk_surface(&event_loop, instance.clone())
@@ -53,11 +56,8 @@ impl<'a> Renderer {
       ..DeviceExtensions::none()
     };
 
-    let (physical_device, queue_family) = vulkano_objects::physical_device::select_physical_device(
-      &instance,
-      surface.clone(),
-      &device_extensions,
-    );
+    let (physical_device, queue_family) =
+      vulkano_objects::physical_device::select(&instance, surface.clone(), &device_extensions);
 
     let (device, mut queues) = Device::new(
       physical_device,
@@ -73,14 +73,10 @@ impl<'a> Renderer {
 
     let queue = queues.next().unwrap();
 
-    let (swapchain, images) = vulkano_objects::swapchain::create_swapchain(
-      &physical_device,
-      device.clone(),
-      surface.clone(),
-    );
+    let (swapchain, images) =
+      vulkano_objects::swapchain::create(&physical_device, device.clone(), surface.clone());
 
-    let render_pass =
-      vulkano_objects::render_pass::create_render_pass(device.clone(), swapchain.clone());
+    let render_pass = vulkano_objects::render_pass::create(device.clone(), swapchain.clone());
     let framebuffers = vulkano_objects::swapchain::create_framebuffers_from_swapchain_images(
       &images,
       render_pass.clone(),
@@ -97,7 +93,7 @@ impl<'a> Renderer {
       depth_range: 0.0..1.0,
     };
 
-    let pipeline = vulkano_objects::pipeline::create_pipeline(
+    let pipeline = vulkano_objects::pipeline::create(
       device.clone(),
       vertex_shader.clone(),
       fragment_shader.clone(),
@@ -153,7 +149,7 @@ impl<'a> Renderer {
     self.recreate_swapchain();
     self.viewport.dimensions = self.surface.window().inner_size().into();
 
-    self.pipeline = vulkano_objects::pipeline::create_pipeline(
+    self.pipeline = vulkano_objects::pipeline::create(
       self.device.clone(),
       self.vertex_shader.clone(),
       self.fragment_shader.clone(),
@@ -211,11 +207,18 @@ impl<'a> Renderer {
   pub fn update_uniform(&mut self, buffer_i: usize, camera: &Camera, scene_objects: &Scene) {
     let projection_view = camera.get_projection_view();
 
-    let cube = &scene_objects.cube;
-    let cube_matrix = projection_view * cube.get_model_matrix();
-    let cube_data = single_colored::vs::ty::Data {
-      color: cube.color,
-      matrix: cube_matrix.into(),
+    let cube1 = &scene_objects.cube1;
+    let cube1_matrix = projection_view * cube1.get_model_matrix();
+    let cube1_data = single_colored::vs::ty::Data {
+      color: cube1.color,
+      matrix: cube1_matrix.into(),
+    };
+
+    let cube2 = &scene_objects.cube2;
+    let cube2_matrix = projection_view * cube2.get_model_matrix();
+    let cube2_data = single_colored::vs::ty::Data {
+      color: cube2.color,
+      matrix: cube2_matrix.into(),
     };
 
     let square = &scene_objects.square;
@@ -227,7 +230,7 @@ impl<'a> Renderer {
 
     self
       .buffer_container
-      .update_uniform(buffer_i, cube_data, square_data);
+      .update_uniform(buffer_i, cube1_data, square_data, cube2_data);
   }
 
   pub fn get_surface_window(&self) -> &Window {

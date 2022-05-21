@@ -5,7 +5,7 @@ const LIST_AVAILABLE_LAYERS: bool = false;
 const ENABLE_VALIDATION_LAYERS: bool = false;
 const VALIDATION_LAYERS: &[&str] = &["VK_LAYER_LUNARG_api_dump"];
 
-pub fn get_instance() -> Arc<Instance> {
+pub fn create() -> Arc<Instance> {
   let required_extensions = vulkano_win::required_extensions();
 
   if LIST_AVAILABLE_LAYERS {

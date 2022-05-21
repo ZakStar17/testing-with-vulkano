@@ -1,5 +1,4 @@
-use crate::render::models::Model;
-use crate::render::Vertex3d;
+use crate::render::{models::Model, Vertex3d};
 
 pub struct SquareModel {
   vertices: Vec<Vertex3d>,

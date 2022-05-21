@@ -1,21 +1,21 @@
-use serde::Serialize;
-use crate::render::shaders::UniformShader;
+use crate::render::{models::Model, shaders::UniformShader};
 use bytemuck::Pod;
-use std::mem::size_of;
-use std::sync::Arc;
-use vulkano::buffer::{
-  BufferContents, BufferUsage, CpuAccessibleBuffer, ImmutableBuffer, TypedBufferAccess,
+use serde::Serialize;
+use std::{mem::size_of, sync::Arc};
+use vulkano::{
+  buffer::{BufferContents, BufferUsage, CpuAccessibleBuffer, ImmutableBuffer, TypedBufferAccess},
+  command_buffer::{CommandBufferExecFuture, PrimaryAutoCommandBuffer},
+  descriptor_set::{
+    layout::DescriptorSetLayout, DescriptorSet, DescriptorSetWithOffsets, PersistentDescriptorSet,
+    WriteDescriptorSet,
+  },
+  device::{Device, Queue},
+  pipeline::graphics::vertex_input::VertexBuffersCollection,
+  sync::{GpuFuture, NowFuture},
 };
-use vulkano::command_buffer::{CommandBufferExecFuture, PrimaryAutoCommandBuffer};
-use vulkano::descriptor_set::layout::DescriptorSetLayout;
-use vulkano::descriptor_set::DescriptorSet;
-use vulkano::descriptor_set::DescriptorSetWithOffsets;
-use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
-use vulkano::device::{Device, Queue};
-use vulkano::pipeline::graphics::vertex_input::VertexBuffersCollection;
-use vulkano::sync::{GpuFuture, NowFuture};
 
-use crate::render::models::Model;
+// This file has a trait "Buffers" that is a bit unnecessary, as it only applies to one struct, namely "ImmutableBuffers"
+// The trait implementation is badly designed, so I will change it as I add different buffers
 
 // This trait will apply to all structs that contain vertex, index and uniform buffers
 pub trait Buffers<Vb, Ib>
@@ -25,7 +25,7 @@ where
 {
   fn get_vertex(&self) -> Vb;
 
-  // Vb and D have their own collection, so they are implicitly wrapped in an Arc, but Ib should be wrapped explicitly
+  // Vb has its own collection, so it is implicitly wrapped in an Arc, but Ib should be wrapped explicitly
   fn get_index(&self) -> Arc<Ib>;
   fn get_model_lengths(&self) -> &Vec<(u32, i32)>;
   fn get_uniform_descriptor_set_offsets(
@@ -35,7 +35,7 @@ where
   ) -> DescriptorSetWithOffsets;
 }
 
-// Struct with immutable vertex and index buffer and a cpu accessible uniform buffer, with generic (V)ertices and (U)niforms
+// Struct with immutable vertex and index buffer and a cpu accessible uniform buffer, with generic (V)ertices
 pub struct ImmutableBuffers<V: BufferContents + Pod> {
   vertex: Arc<ImmutableBuffer<[V]>>,
   index: Arc<ImmutableBuffer<[u16]>>,
@@ -88,7 +88,11 @@ impl<V: BufferContents + Pod> ImmutableBuffers<V> {
     }
   }
 
-  pub fn write_to_uniform<U: BufferContents + Copy + Serialize>(&mut self, buffer_i: usize, data: Vec<(usize, U)>) {
+  pub fn write_to_uniform<U: BufferContents + Copy + Serialize>(
+    &mut self,
+    buffer_i: usize,
+    data: Vec<(usize, U)>,
+  ) {
     let mut data_bytes = Vec::with_capacity(data.len());
     for (model_i, uniform_struct) in data {
       data_bytes.push((model_i, bincode::serialize(&uniform_struct).unwrap()))

@@ -1,15 +1,21 @@
 use crate::render::Vertex3d;
 use std::sync::Arc;
-use vulkano::descriptor_set::layout::DescriptorType;
-use vulkano::device::Device;
-use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
-use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
-use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
-use vulkano::pipeline::GraphicsPipeline;
-use vulkano::render_pass::{RenderPass, Subpass};
-use vulkano::shader::ShaderModule;
+use vulkano::{
+  descriptor_set::layout::DescriptorType,
+  device::Device,
+  pipeline::{
+    graphics::{
+      input_assembly::InputAssemblyState,
+      vertex_input::BuffersDefinition,
+      viewport::{Viewport, ViewportState},
+    },
+    GraphicsPipeline,
+  },
+  render_pass::{RenderPass, Subpass},
+  shader::ShaderModule,
+};
 
-pub fn create_pipeline(
+pub fn create(
   device: Arc<Device>,
   vs: Arc<ShaderModule>,
   fs: Arc<ShaderModule>,

@@ -1,4 +1,3 @@
-
 use vulkano::buffer::BufferContents;
 
 pub trait Model<V: BufferContents> {

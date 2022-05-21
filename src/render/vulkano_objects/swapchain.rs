@@ -1,15 +1,15 @@
 use std::sync::Arc;
 use vulkano::render_pass::FramebufferCreateInfo;
 
-use vulkano::device::physical::PhysicalDevice;
-use vulkano::device::Device;
-use vulkano::image::view::ImageView;
-use vulkano::image::{ImageUsage, SwapchainImage};
-use vulkano::render_pass::{Framebuffer, RenderPass};
-use vulkano::swapchain::{Surface, Swapchain, SwapchainCreateInfo};
+use vulkano::{
+  device::{physical::PhysicalDevice, Device},
+  image::{view::ImageView, ImageUsage, SwapchainImage},
+  render_pass::{Framebuffer, RenderPass},
+  swapchain::{Surface, Swapchain, SwapchainCreateInfo},
+};
 use winit::window::Window;
 
-pub fn create_swapchain(
+pub fn create(
   physical_device: &PhysicalDevice,
   device: Arc<Device>,
   surface: Arc<Surface<Window>>,
