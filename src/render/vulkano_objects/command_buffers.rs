@@ -6,6 +6,7 @@ use vulkano::{
     AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer, SubpassContents,
   },
   device::{Device, Queue},
+  format::ClearValue,
   pipeline::{
     graphics::vertex_input::VertexBuffersCollection, GraphicsPipeline, Pipeline, PipelineBindPoint,
   },
@@ -36,7 +37,7 @@ pub fn create<Vb: VertexBuffersCollection, Ib: TypedBufferAccess<Content = [u16]
         .begin_render_pass(
           framebuffer.clone(),
           SubpassContents::Inline,
-          vec![[0.1, 0.1, 0.1, 1.0].into()],
+          vec![[0.1, 0.1, 0.1, 1.0].into(), ClearValue::Depth(1.0)],
         )
         .unwrap()
         .bind_pipeline_graphics(pipeline.clone());

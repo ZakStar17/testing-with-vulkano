@@ -10,19 +10,22 @@ impl SquareModel {
     Self {
       vertices: vec![
         Vertex3d {
-          position: [-0.25, -0.25, 0.0],
+          position: [-0.5, -0.5, 0.0],
         },
         Vertex3d {
-          position: [0.25, -0.25, 0.0],
+          position: [0.5, -0.5, 0.0],
         },
         Vertex3d {
-          position: [-0.25, 0.25, 0.0],
+          position: [-0.5, 0.5, 0.0],
         },
         Vertex3d {
-          position: [0.25, 0.25, 0.0],
+          position: [0.5, 0.5, 0.0],
         },
       ],
-      indices: vec![0, 1, 2, 1, 2, 3],
+      // draw clockwise and counter-clockwise
+      // 0  1
+      // 2  3
+      indices: vec![0, 2, 1, 1, 2, 3, 0, 1, 2, 1, 3, 2],
     }
   }
 }

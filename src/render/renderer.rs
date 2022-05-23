@@ -1,21 +1,18 @@
 use crate::{
   app::Scene,
   game_objects::RenderableIn3d,
-  render::{shaders::single_colored, vulkano_objects, BufferContainer, Camera},
+  render::{
+    shaders::single_colored, swapchain_container::SwapchainContainer, vulkano_objects,
+    BufferContainer, Camera,
+  },
 };
-
 use std::sync::Arc;
 use vulkano::{
   device::{Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo},
-  image::SwapchainImage,
   instance::Instance,
   pipeline::{graphics::viewport::Viewport, GraphicsPipeline, Pipeline},
-  render_pass::{Framebuffer, RenderPass},
   shader::ShaderModule,
-  swapchain::{
-    self, AcquireError, PresentFuture, Surface, Swapchain, SwapchainAcquireFuture,
-    SwapchainCreateInfo, SwapchainCreationError,
-  },
+  swapchain::{AcquireError, PresentFuture, Surface, SwapchainAcquireFuture},
   sync::{self, FenceSignalFuture, FlushError, GpuFuture, NowFuture},
 };
 use vulkano_win::VkSurfaceBuild;
@@ -31,10 +28,7 @@ pub struct Renderer {
   _instance: Arc<Instance>,
   device: Arc<Device>,
   queue: Arc<Queue>,
-  swapchain: Arc<Swapchain<Window>>,
-  images: Vec<Arc<SwapchainImage<winit::window::Window>>>,
-  render_pass: Arc<RenderPass>,
-  framebuffers: Vec<Arc<Framebuffer>>,
+  swapchain_container: SwapchainContainer,
   vertex_shader: Arc<ShaderModule>,
   fragment_shader: Arc<ShaderModule>,
   viewport: Viewport,
@@ -65,7 +59,7 @@ impl<'a> Renderer {
         queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
         enabled_extensions: physical_device
           .required_extensions()
-          .union(&device_extensions), // new
+          .union(&device_extensions),
         ..Default::default()
       },
     )
@@ -73,14 +67,8 @@ impl<'a> Renderer {
 
     let queue = queues.next().unwrap();
 
-    let (swapchain, images) =
-      vulkano_objects::swapchain::create(&physical_device, device.clone(), surface.clone());
-
-    let render_pass = vulkano_objects::render_pass::create(device.clone(), swapchain.clone());
-    let framebuffers = vulkano_objects::swapchain::create_framebuffers_from_swapchain_images(
-      &images,
-      render_pass.clone(),
-    );
+    let swapchain_container =
+      SwapchainContainer::new(physical_device, device.clone(), surface.clone());
 
     let vertex_shader =
       single_colored::vs::load(device.clone()).expect("failed to create shader module");
@@ -97,7 +85,7 @@ impl<'a> Renderer {
       device.clone(),
       vertex_shader.clone(),
       fragment_shader.clone(),
-      render_pass.clone(),
+      swapchain_container.get_render_pass(),
       viewport.clone(),
     );
 
@@ -107,7 +95,7 @@ impl<'a> Renderer {
       device.clone(),
       pipeline.clone(),
       descriptor_set_layout,
-      &framebuffers,
+      swapchain_container.get_framebuffers(),
       queue.clone(),
     );
 
@@ -115,10 +103,7 @@ impl<'a> Renderer {
       surface,
       device,
       queue,
-      swapchain,
-      images,
-      render_pass,
-      framebuffers,
+      swapchain_container,
       vertex_shader,
       fragment_shader,
       viewport,
@@ -129,50 +114,41 @@ impl<'a> Renderer {
   }
 
   pub fn recreate_swapchain(&mut self) {
-    let (new_swapchain, new_images) = match self.swapchain.recreate(SwapchainCreateInfo {
-      image_extent: self.surface.window().inner_size().into(),
-      ..self.swapchain.create_info()
-    }) {
-      Ok(r) => r,
-      Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
-      Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
-    };
-
-    self.swapchain = new_swapchain;
-    self.framebuffers = vulkano_objects::swapchain::create_framebuffers_from_swapchain_images(
-      &new_images,
-      self.render_pass.clone(),
-    );
+    self
+      .swapchain_container
+      .recreate_swapchain(self.device.clone(), self.surface.clone())
   }
 
   pub fn handle_window_resize(&mut self) {
-    self.recreate_swapchain();
+    self
+      .swapchain_container
+      .recreate_swapchain(self.device.clone(), self.surface.clone());
     self.viewport.dimensions = self.surface.window().inner_size().into();
 
     self.pipeline = vulkano_objects::pipeline::create(
       self.device.clone(),
       self.vertex_shader.clone(),
       self.fragment_shader.clone(),
-      self.render_pass.clone(),
+      self.swapchain_container.get_render_pass(),
       self.viewport.clone(),
     );
 
     self.buffer_container.handle_window_resize(
       self.device.clone(),
       self.pipeline.clone(),
-      &self.framebuffers,
+      self.swapchain_container.get_framebuffers(),
       self.queue.clone(),
     );
   }
 
   pub fn get_image_count(&self) -> usize {
-    self.images.len()
+    self.swapchain_container.image_count()
   }
 
-  pub fn acquire_swapchain_image(
+  pub fn acquire_next_swapchain_image(
     &self,
   ) -> Result<(usize, bool, SwapchainAcquireFuture<Window>), AcquireError> {
-    swapchain::acquire_next_image(self.swapchain.clone(), None)
+    self.swapchain_container.acquire_next_swapchain_image()
   }
 
   pub fn synchronize(&self) -> NowFuture {
@@ -200,7 +176,11 @@ impl<'a> Renderer {
     );
 
     boxed
-      .then_swapchain_present(self.queue.clone(), self.swapchain.clone(), image_i)
+      .then_swapchain_present(
+        self.queue.clone(),
+        self.swapchain_container.get_swapchain(),
+        image_i,
+      )
       .then_signal_fence_and_flush()
   }
 

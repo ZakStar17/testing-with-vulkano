@@ -93,6 +93,7 @@ impl<V: BufferContents + Pod> ImmutableBuffers<V> {
     buffer_i: usize,
     data: Vec<(usize, U)>,
   ) {
+    // todo: could be more optimized (data gets copied 2 to 3 times)
     let mut data_bytes = Vec::with_capacity(data.len());
     for (model_i, uniform_struct) in data {
       data_bytes.push((model_i, bincode::serialize(&uniform_struct).unwrap()))
@@ -104,12 +105,10 @@ impl<V: BufferContents + Pod> ImmutableBuffers<V> {
       .unwrap_or_else(|e| panic!("Failed to write to uniform buffer\n{}", e));
 
     for (model_i, bytes) in data_bytes {
-      let mut offset = model_i * self.uniform_align;
-
-      for byte in bytes {
-        uniform_content[offset] = byte;
-        offset += 1;
-      }
+      // copies bytes into their respective place (by calculating offset)
+      let offset = model_i * self.uniform_align;
+      let content_slice = &mut uniform_content[offset..offset+(bytes.len())];
+      content_slice.copy_from_slice(&bytes);
     }
   }
 }

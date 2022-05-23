@@ -1,10 +1,7 @@
 use std::sync::Arc;
-use vulkano::render_pass::FramebufferCreateInfo;
-
 use vulkano::{
   device::{physical::PhysicalDevice, Device},
-  image::{view::ImageView, ImageUsage, SwapchainImage},
-  render_pass::{Framebuffer, RenderPass},
+  image::{ImageUsage, SwapchainImage},
   swapchain::{Surface, Swapchain, SwapchainCreateInfo},
 };
 use winit::window::Window;
@@ -39,24 +36,4 @@ pub fn create(
     },
   )
   .unwrap()
-}
-
-pub fn create_framebuffers_from_swapchain_images(
-  images: &[Arc<SwapchainImage<Window>>],
-  render_pass: Arc<RenderPass>,
-) -> Vec<Arc<Framebuffer>> {
-  images
-    .iter()
-    .map(|image| {
-      let view = ImageView::new_default(image.clone()).unwrap();
-      Framebuffer::new(
-        render_pass.clone(),
-        FramebufferCreateInfo {
-          attachments: vec![view],
-          ..Default::default()
-        },
-      )
-      .unwrap()
-    })
-    .collect::<Vec<_>>()
 }

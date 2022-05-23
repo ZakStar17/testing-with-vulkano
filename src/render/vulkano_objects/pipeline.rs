@@ -5,7 +5,9 @@ use vulkano::{
   device::Device,
   pipeline::{
     graphics::{
+      depth_stencil::DepthStencilState,
       input_assembly::InputAssemblyState,
+      rasterization::{CullMode, RasterizationState},
       vertex_input::BuffersDefinition,
       viewport::{Viewport, ViewportState},
     },
@@ -27,6 +29,8 @@ pub fn create(
     .vertex_shader(vs.entry_point("main").unwrap(), ())
     .input_assembly_state(InputAssemblyState::new())
     .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([viewport]))
+    .rasterization_state(RasterizationState::new().cull_mode(CullMode::Back))
+    .depth_stencil_state(DepthStencilState::simple_depth_test())
     .fragment_shader(fs.entry_point("main").unwrap(), ())
     .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
     .with_auto_layout(device.clone(), |layout_create_infos| {

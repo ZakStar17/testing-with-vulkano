@@ -6,6 +6,7 @@ mod renderer;
 mod shaders;
 mod vertex_data;
 mod vulkano_objects;
+mod swapchain_container;
 
 pub use buffer_container::BufferContainer;
 pub use camera::Camera;

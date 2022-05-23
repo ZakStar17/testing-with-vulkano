@@ -5,3 +5,4 @@ pub mod physical_device;
 pub mod pipeline;
 pub mod render_pass;
 pub mod swapchain;
+pub mod framebuffers;

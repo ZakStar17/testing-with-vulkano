@@ -17,7 +17,7 @@ use vulkano::{
 };
 
 // data from different models gets stored in the same buffer, so this is meant to be
-// an abstraction between concrete models and arrays of models 
+// an abstraction between concrete models and arrays of models
 pub struct BufferContainer {
   pub buffers: ImmutableBuffers<Vertex3d>,
   pub command_buffers: Vec<Arc<PrimaryAutoCommandBuffer>>,
@@ -32,9 +32,13 @@ impl BufferContainer {
     queue: Arc<Queue>,
   ) -> Self {
     // the ordering is important while assigning uniforms
-    let models: Vec<Box<dyn Model<Vertex3d>>> =
-      vec![Box::new(CubeModel::new()), Box::new(SquareModel::new()), Box::new(CubeModel::new())];
+    let models: Vec<Box<dyn Model<Vertex3d>>> = vec![
+      Box::new(CubeModel::new()),
+      Box::new(SquareModel::new()),
+      Box::new(CubeModel::new()),
+    ];
 
+    // uniform buffer count is assigned to the number of image, in this case the number of framebuffers
     let buffers = ImmutableBuffers::initialize::<U, S>(
       device.clone(),
       descriptor_set_layout,
@@ -73,10 +77,11 @@ impl BufferContainer {
     buffer_i: usize,
     cube1_data: U,
     square_data: U,
-    cube2_data: U
+    cube2_data: U,
   ) {
-    self
-      .buffers
-      .write_to_uniform(buffer_i, vec![(0, cube1_data), (1, square_data), (2, cube2_data)]);
+    self.buffers.write_to_uniform(
+      buffer_i,
+      vec![(0, cube1_data), (1, square_data), (2, cube2_data)],
+    );
   }
 }
