@@ -1,7 +1,6 @@
-use crate::render::Vertex3d;
+use crate::render::vertex_data::{MatrixInstance, Vertex3d};
 use std::sync::Arc;
 use vulkano::{
-  descriptor_set::layout::DescriptorType,
   device::Device,
   pipeline::{
     graphics::{
@@ -25,7 +24,11 @@ pub fn create(
   viewport: Viewport,
 ) -> Arc<GraphicsPipeline> {
   GraphicsPipeline::start()
-    .vertex_input_state(BuffersDefinition::new().vertex::<Vertex3d>())
+    .vertex_input_state(
+      BuffersDefinition::new()
+        .vertex::<Vertex3d>()
+        .instance::<MatrixInstance>(),
+    )
     .vertex_shader(vs.entry_point("main").unwrap(), ())
     .input_assembly_state(InputAssemblyState::new())
     .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([viewport]))
@@ -33,9 +36,11 @@ pub fn create(
     .depth_stencil_state(DepthStencilState::simple_depth_test())
     .fragment_shader(fs.entry_point("main").unwrap(), ())
     .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-    .with_auto_layout(device.clone(), |layout_create_infos| {
-      let binding = layout_create_infos[0].bindings.get_mut(&0).unwrap();
-      binding.descriptor_type = DescriptorType::UniformBufferDynamic;
-    })
+    .build(device.clone())
+    // todo: reimplement dynamic uniforms
+    // .with_auto_layout(device.clone(), |layout_create_infos| {
+    //   let binding = layout_create_infos[0].bindings.get_mut(&0).unwrap();
+    //   binding.descriptor_type = DescriptorType::UniformBufferDynamic;
+    // })
     .unwrap()
 }

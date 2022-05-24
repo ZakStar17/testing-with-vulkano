@@ -1,10 +1,5 @@
 use bytemuck::{Pod, Zeroable};
-
-#[repr(C)]
-#[derive(Default, Debug, Copy, Clone, Zeroable, Pod)]
-pub struct Vertex2d {
-  pub position: [f32; 2],
-}
+use vulkano::impl_vertex;
 
 #[repr(C)]
 #[derive(Default, Debug, Copy, Clone, Zeroable, Pod)]
@@ -12,5 +7,11 @@ pub struct Vertex3d {
   pub position: [f32; 3],
 }
 
-vulkano::impl_vertex!(Vertex2d, position);
-vulkano::impl_vertex!(Vertex3d, position);
+impl_vertex!(Vertex3d, position);
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
+pub struct MatrixInstance {
+  pub matrix: [[f32; 4]; 4],
+}
+impl_vertex!(MatrixInstance, matrix);

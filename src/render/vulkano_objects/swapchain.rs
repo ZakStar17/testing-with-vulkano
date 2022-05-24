@@ -27,7 +27,7 @@ pub fn create(
     device,
     surface.clone(),
     SwapchainCreateInfo {
-      min_image_count: caps.min_image_count,
+      min_image_count: caps.min_image_count + 1,
       image_format,
       image_extent: surface.window().inner_size().into(),
       image_usage: ImageUsage::color_attachment(),

@@ -1,4 +1,5 @@
-use crate::{app::Scene, render::Camera};
+use crate::Scene;
+use crate::render::{Camera};
 use std::sync::Arc;
 use vulkano::{
   swapchain::AcquireError,
@@ -18,8 +19,8 @@ pub struct RenderLoop {
 }
 
 impl<'a> RenderLoop {
-  pub fn new(event_loop: &EventLoop<()>) -> Self {
-    let renderer = Renderer::initialize(event_loop);
+  pub fn new(event_loop: &EventLoop<()>, scene: &Scene) -> Self {
+    let renderer = Renderer::initialize(event_loop, scene);
 
     // each main command buffer is created with a specific framebuffer in mid, which depend on the swapchain images
     // what this means is that the number of command buffers is equal to the image count
@@ -38,7 +39,7 @@ impl<'a> RenderLoop {
     }
   }
 
-  pub fn update(&mut self, camera: &Camera, scene_objects: &Scene) {
+  pub fn update(&mut self, camera: &Camera, scene: &Scene) {
     if self.window_resized {
       self.window_resized = false;
       self.recreate_swapchain = false;
@@ -68,10 +69,9 @@ impl<'a> RenderLoop {
       cur_fence.wait(None).unwrap();
     }
 
-    // logic that uses the GPU resources that are currently not used (have been waited upon)
-    self.renderer.update_uniform(image_i, camera, scene_objects);
+    // code that uses objects not currently used by the GPU (corresponding to image_i)
+    self.renderer.update_matrices(image_i, camera, scene);
 
-    // for future
     let something_needs_all_gpu_resources = false;
     let previous_future = match self.fences[self.previous_fence_i].clone() {
       None => self.renderer.synchronize().boxed(),

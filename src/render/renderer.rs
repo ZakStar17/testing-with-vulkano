@@ -1,16 +1,15 @@
 use crate::{
-  app::Scene,
-  game_objects::RenderableIn3d,
   render::{
-    shaders::single_colored, swapchain_container::SwapchainContainer, vulkano_objects,
-    BufferContainer, Camera,
+    buffer_container::BufferContainer, shaders::single_colored,
+    swapchain_container::SwapchainContainer, vulkano_objects, Camera,
   },
+  Scene,
 };
 use std::sync::Arc;
 use vulkano::{
   device::{Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo},
   instance::Instance,
-  pipeline::{graphics::viewport::Viewport, GraphicsPipeline, Pipeline},
+  pipeline::{graphics::viewport::Viewport, GraphicsPipeline},
   shader::ShaderModule,
   swapchain::{AcquireError, PresentFuture, Surface, SwapchainAcquireFuture},
   sync::{self, FenceSignalFuture, FlushError, GpuFuture, NowFuture},
@@ -37,7 +36,7 @@ pub struct Renderer {
 }
 
 impl<'a> Renderer {
-  pub fn initialize(event_loop: &EventLoop<()>) -> Self {
+  pub fn initialize(event_loop: &EventLoop<()>, scene: &Scene) -> Self {
     let instance = vulkano_objects::instance::create();
 
     let surface = WindowBuilder::new()
@@ -89,14 +88,12 @@ impl<'a> Renderer {
       viewport.clone(),
     );
 
-    let descriptor_set_layout = pipeline.layout().set_layouts().get(0).unwrap().clone();
-
-    let buffer_container = BufferContainer::new::<single_colored::vs::ty::Data, single_colored::S>(
+    let buffer_container = BufferContainer::new(
       device.clone(),
       pipeline.clone(),
-      descriptor_set_layout,
       swapchain_container.get_framebuffers(),
       queue.clone(),
+      scene,
     );
 
     Self {
@@ -170,7 +167,7 @@ impl<'a> Renderer {
         .join(swapchain_acquire_future)
         .then_execute(
           self.queue.clone(),
-          self.buffer_container.command_buffers[image_i].clone(),
+          self.buffer_container.get_command_buffer(image_i).clone(),
         )
         .unwrap(),
     );
@@ -184,33 +181,10 @@ impl<'a> Renderer {
       .then_signal_fence_and_flush()
   }
 
-  pub fn update_uniform(&mut self, buffer_i: usize, camera: &Camera, scene_objects: &Scene) {
-    let projection_view = camera.get_projection_view();
-
-    let cube1 = &scene_objects.cube1;
-    let cube1_matrix = projection_view * cube1.get_model_matrix();
-    let cube1_data = single_colored::vs::ty::Data {
-      color: cube1.color,
-      matrix: cube1_matrix.into(),
-    };
-
-    let cube2 = &scene_objects.cube2;
-    let cube2_matrix = projection_view * cube2.get_model_matrix();
-    let cube2_data = single_colored::vs::ty::Data {
-      color: cube2.color,
-      matrix: cube2_matrix.into(),
-    };
-
-    let square = &scene_objects.square;
-    let square_matrix = projection_view * square.get_model_matrix();
-    let square_data = single_colored::vs::ty::Data {
-      color: square.color,
-      matrix: square_matrix.into(),
-    };
-
+  pub fn update_matrices(&mut self, buffer_i: usize, camera: &Camera, scene: &Scene) {
     self
       .buffer_container
-      .update_uniform(buffer_i, cube1_data, square_data, cube2_data);
+      .update_matrices(buffer_i, scene, camera.get_projection_view());
   }
 
   pub fn get_surface_window(&self) -> &Window {

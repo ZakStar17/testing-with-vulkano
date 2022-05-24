@@ -4,8 +4,8 @@ use rand::Rng;
 use crate::game_objects::{Renderable3dObject, RenderableIn3d};
 
 pub struct Cube {
-  pub color: [f32; 3],
-  pub object: Renderable3dObject,
+  color: [f32; 3],
+  object: Renderable3dObject,
 }
 
 impl Cube {
@@ -19,6 +19,10 @@ impl Cube {
   pub fn change_to_random_color(&mut self) {
     let get_random_float = || rand::thread_rng().gen_range(0..100) as f32 / 100.0;
     self.color = [get_random_float(), get_random_float(), get_random_float()];
+  }
+
+  pub fn as_renderable(&mut self) -> &mut Renderable3dObject {
+    &mut self.object
   }
 }
 

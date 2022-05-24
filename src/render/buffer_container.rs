@@ -1,51 +1,49 @@
-use crate::render::{
-  models::{CubeModel, Model, SquareModel},
-  shaders::UniformShader,
-  vulkano_objects,
-  vulkano_objects::buffers::ImmutableBuffers,
-  Vertex3d,
+use crate::{
+  render::{
+    renderable_scene::RenderableScene,
+    vertex_data::{MatrixInstance, Vertex3d},
+    vulkano_objects,
+    vulkano_objects::buffers::Buffers,
+  },
+  Scene,
 };
-use serde::Serialize;
+use cgmath::Matrix4;
 use std::sync::Arc;
 use vulkano::{
-  buffer::BufferContents,
   command_buffer::PrimaryAutoCommandBuffer,
-  descriptor_set::layout::DescriptorSetLayout,
   device::{Device, Queue},
   pipeline::GraphicsPipeline,
   render_pass::Framebuffer,
 };
 
-// data from different models gets stored in the same buffer, so this is meant to be
-// an abstraction between concrete models and arrays of models
+// responsible for managing data between existing buffers and command_buffers
 pub struct BufferContainer {
-  pub buffers: ImmutableBuffers<Vertex3d>,
-  pub command_buffers: Vec<Arc<PrimaryAutoCommandBuffer>>,
+  buffers: Buffers<Vertex3d, MatrixInstance>,
+  command_buffers: Vec<Arc<PrimaryAutoCommandBuffer>>,
+  instance_count_per_model_cache: Vec<u32>,
 }
 
 impl BufferContainer {
-  pub fn new<U: BufferContents + Copy, S: UniformShader<U>>(
+  pub fn new(
     device: Arc<Device>,
     pipeline: Arc<GraphicsPipeline>,
-    descriptor_set_layout: Arc<DescriptorSetLayout>,
     framebuffers: &Vec<Arc<Framebuffer>>,
     queue: Arc<Queue>,
+    scene: &Scene,
   ) -> Self {
-    // the ordering is important while assigning uniforms
-    let models: Vec<Box<dyn Model<Vertex3d>>> = vec![
-      Box::new(CubeModel::new()),
-      Box::new(SquareModel::new()),
-      Box::new(CubeModel::new()),
-    ];
-
     // uniform buffer count is assigned to the number of image, in this case the number of framebuffers
-    let buffers = ImmutableBuffers::initialize::<U, S>(
+    let buffers = Buffers::<Vertex3d, MatrixInstance>::initialize(
       device.clone(),
-      descriptor_set_layout,
       framebuffers.len(),
       queue.clone(),
-      &models,
+      &RenderableScene::get_models(),
+      1024,
     );
+
+    let instance_count_per_model: Vec<u32> = RenderableScene::instance_count_per_model(scene)
+      .drain(0..)
+      .map(|n| n as u32)
+      .collect();
 
     let command_buffers = vulkano_objects::command_buffers::create(
       device.clone(),
@@ -53,11 +51,13 @@ impl BufferContainer {
       pipeline,
       &framebuffers,
       &buffers,
+      &instance_count_per_model,
     );
 
     Self {
       buffers,
       command_buffers,
+      instance_count_per_model_cache: instance_count_per_model.clone(),
     }
   }
 
@@ -68,20 +68,28 @@ impl BufferContainer {
     framebuffers: &Vec<Arc<Framebuffer>>,
     queue: Arc<Queue>,
   ) {
-    self.command_buffers =
-      vulkano_objects::command_buffers::create(device, queue, pipeline, framebuffers, &self.buffers)
+    self.command_buffers = vulkano_objects::command_buffers::create(
+      device,
+      queue,
+      pipeline,
+      framebuffers,
+      &self.buffers,
+      &self.instance_count_per_model_cache,
+    )
   }
 
-  pub fn update_uniform<U: BufferContents + Copy + Serialize>(
-    &mut self,
-    buffer_i: usize,
-    cube1_data: U,
-    square_data: U,
-    cube2_data: U,
-  ) {
-    self.buffers.write_to_uniform(
+  pub fn update_matrices(&mut self, buffer_i: usize, scene: &Scene, projection_view: Matrix4<f32>) {
+    self.buffers.update_matrices(
       buffer_i,
-      vec![(0, cube1_data), (1, square_data), (2, cube2_data)],
-    );
+      RenderableScene::into_matrices(scene)
+        .map(|model| MatrixInstance {
+          matrix: (projection_view * model).into(),
+        })
+        .collect(),
+    )
+  }
+
+  pub fn get_command_buffer(&self, buffer_i: usize) -> Arc<PrimaryAutoCommandBuffer> {
+    self.command_buffers[buffer_i].clone()
   }
 }

@@ -1,59 +1,35 @@
-use crate::render::{models::Model, shaders::UniformShader};
+use crate::render::models::Model;
 use bytemuck::Pod;
-use serde::Serialize;
-use std::{mem::size_of, sync::Arc};
+use std::sync::Arc;
 use vulkano::{
-  buffer::{BufferContents, BufferUsage, CpuAccessibleBuffer, ImmutableBuffer, TypedBufferAccess},
+  buffer::{BufferContents, BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
   command_buffer::{CommandBufferExecFuture, PrimaryAutoCommandBuffer},
-  descriptor_set::{
-    layout::DescriptorSetLayout, DescriptorSet, DescriptorSetWithOffsets, PersistentDescriptorSet,
-    WriteDescriptorSet,
-  },
   device::{Device, Queue},
-  pipeline::graphics::vertex_input::VertexBuffersCollection,
   sync::{GpuFuture, NowFuture},
 };
 
-// This file has a trait "Buffers" that is a bit unnecessary, as it only applies to one struct, namely "ImmutableBuffers"
-// The trait implementation is badly designed, so I will change it as I add different buffers
-
-// This trait will apply to all structs that contain vertex, index and uniform buffers
-pub trait Buffers<Vb, Ib>
-where
-  Vb: VertexBuffersCollection, // Vertex buffer
-  Ib: TypedBufferAccess<Content = [u16]> + 'static,
-{
-  fn get_vertex(&self) -> Vb;
-
-  // Vb has its own collection, so it is implicitly wrapped in an Arc, but Ib should be wrapped explicitly
-  fn get_index(&self) -> Arc<Ib>;
-  fn get_model_lengths(&self) -> &Vec<(u32, i32)>;
-  fn get_uniform_descriptor_set_offsets(
-    &self,
-    buffer_i: usize,
-    model_i: usize,
-  ) -> DescriptorSetWithOffsets;
-}
-
-// Struct with immutable vertex and index buffer and a cpu accessible uniform buffer, with generic (V)ertices
-pub struct ImmutableBuffers<V: BufferContents + Pod> {
+pub struct Buffers<V: BufferContents + Pod, I: BufferContents + Pod> {
   vertex: Arc<ImmutableBuffer<[V]>>,
   index: Arc<ImmutableBuffer<[u16]>>,
+  instance: Vec<Arc<CpuAccessibleBuffer<[I]>>>,
   model_lengths: Vec<(u32, i32)>,
-  uniforms: Vec<(Arc<CpuAccessibleBuffer<[u8]>>, Arc<PersistentDescriptorSet>)>,
-  uniform_align: usize,
 }
 
-impl<V: BufferContents + Pod> ImmutableBuffers<V> {
-  pub fn initialize<U: BufferContents + Copy, S: UniformShader<U>>(
+impl<V: BufferContents + Pod, I: BufferContents + Pod + Default> Buffers<V, I> {
+  pub fn initialize(
     device: Arc<Device>,
-    descriptor_set_layout: Arc<DescriptorSetLayout>,
     uniform_buffer_count: usize,
     transfer_queue: Arc<Queue>,
     models: &Vec<Box<dyn Model<V>>>,
+    max_instance_count: usize,
   ) -> Self {
     let (vertex, vertex_future) = create_immutable_vertex::<V>(transfer_queue.clone(), models);
     let (index, index_future) = create_immutable_index::<V>(transfer_queue, models);
+
+    let fence = vertex_future
+      .join(index_future)
+      .then_signal_fence_and_flush()
+      .unwrap();
 
     let model_lengths = models
       .iter()
@@ -65,79 +41,43 @@ impl<V: BufferContents + Pod> ImmutableBuffers<V> {
       })
       .collect();
 
-    let fence = vertex_future
-      .join(index_future)
-      .then_signal_fence_and_flush()
-      .unwrap();
-
-    let (uniform_buffers, uniform_align) = create_cpu_accessible_uniforms::<U, S>(
-      device,
-      descriptor_set_layout,
-      uniform_buffer_count,
-      models.len(),
-    );
+    let instance = vec![
+      create_cpu_accessible_instance(device.clone(), max_instance_count);
+      uniform_buffer_count
+    ];
 
     fence.wait(None).unwrap();
 
     Self {
       vertex,
       index,
+      instance,
       model_lengths,
-      uniforms: uniform_buffers,
-      uniform_align,
     }
   }
 
-  pub fn write_to_uniform<U: BufferContents + Copy + Serialize>(
-    &mut self,
-    buffer_i: usize,
-    data: Vec<(usize, U)>,
-  ) {
-    // todo: could be more optimized (data gets copied 2 to 3 times)
-    let mut data_bytes = Vec::with_capacity(data.len());
-    for (model_i, uniform_struct) in data {
-      data_bytes.push((model_i, bincode::serialize(&uniform_struct).unwrap()))
-    }
-
-    let mut uniform_content = self.uniforms[buffer_i]
-      .0
+  pub fn update_matrices(&mut self, buffer_i: usize, data: Vec<I>) {
+    let mut instance_content = self.instance[buffer_i]
       .write()
-      .unwrap_or_else(|e| panic!("Failed to write to uniform buffer\n{}", e));
+      .unwrap_or_else(|e| panic!("Failed to write to instance buffer\n{}", e));
 
-    for (model_i, bytes) in data_bytes {
-      // copies bytes into their respective place (by calculating offset)
-      let offset = model_i * self.uniform_align;
-      let content_slice = &mut uniform_content[offset..offset+(bytes.len())];
-      content_slice.copy_from_slice(&bytes);
-    }
+    instance_content[0..data.len()].copy_from_slice(data.as_slice());
   }
-}
 
-impl<'a, V> Buffers<Arc<ImmutableBuffer<[V]>>, ImmutableBuffer<[u16]>> for ImmutableBuffers<V>
-where
-  V: BufferContents + Pod,
-{
-  fn get_vertex(&self) -> Arc<ImmutableBuffer<[V]>> {
+  pub fn get_vertex(&self) -> Arc<ImmutableBuffer<[V]>> {
     self.vertex.clone()
   }
 
-  fn get_index(&self) -> Arc<ImmutableBuffer<[u16]>> {
+  pub fn get_index(&self) -> Arc<ImmutableBuffer<[u16]>> {
     self.index.clone()
   }
 
-  fn get_model_lengths(&self) -> &Vec<(u32, i32)> {
-    &self.model_lengths
+  pub fn get_instance(&self, buffer_i: usize) -> Arc<CpuAccessibleBuffer<[I]>> {
+    self.instance[buffer_i].clone()
   }
 
-  fn get_uniform_descriptor_set_offsets(
-    &self,
-    buffer_i: usize,
-    model_i: usize,
-  ) -> DescriptorSetWithOffsets {
-    self.uniforms[buffer_i]
-      .1
-      .clone()
-      .offsets([(model_i * self.uniform_align) as u32])
+  pub fn get_model_lengths(&self) -> &Vec<(u32, i32)> {
+    &self.model_lengths
   }
 }
 
@@ -177,53 +117,19 @@ where
   ImmutableBuffer::from_iter(indices.into_iter(), BufferUsage::index_buffer(), queue).unwrap()
 }
 
-fn create_cpu_accessible_uniforms<U, S>(
+fn create_cpu_accessible_instance<I>(
   device: Arc<Device>,
-  descriptor_set_layout: Arc<DescriptorSetLayout>,
-  buffer_count: usize,
-  model_count: usize,
-) -> (
-  Vec<(Arc<CpuAccessibleBuffer<[u8]>>, Arc<PersistentDescriptorSet>)>,
-  usize,
-)
+  max_total_instances: usize,
+) -> Arc<CpuAccessibleBuffer<[I]>>
 where
-  U: BufferContents + Copy,
-  S: UniformShader<U>,
+  I: BufferContents + Pod + Default,
 {
-  let mut uniform_bytes = S::get_initial_uniform_bytes();
-
-  // dynamic uniform buffers will be aligned by a specific amount
-  let min_dynamic_align = device
-    .physical_device()
-    .properties()
-    .min_uniform_buffer_offset_alignment as usize;
-  let align = (size_of::<U>() + min_dynamic_align - 1) & !(min_dynamic_align - 1);
-
-  // set uniform_bytes to have the same size as align
-  uniform_bytes.append(&mut vec![0; align - uniform_bytes.len()]);
-  assert_eq!(uniform_bytes.len(), align);
-  let aligned_data = uniform_bytes.repeat(model_count);
-
-  let buffers: Vec<(Arc<CpuAccessibleBuffer<[u8]>>, Arc<PersistentDescriptorSet>)> = (0
-    ..buffer_count)
-    .map(|_| {
-      let buffer = CpuAccessibleBuffer::from_iter(
-        device.clone(),
-        BufferUsage::uniform_buffer(),
-        false,
-        aligned_data.clone(),
-      )
-      .unwrap();
-
-      let descriptor_set = PersistentDescriptorSet::new(
-        descriptor_set_layout.clone(),
-        [WriteDescriptorSet::buffer(0, buffer.clone())],
-      )
-      .unwrap();
-
-      (buffer, descriptor_set)
-    })
-    .collect();
-
-  (buffers, align)
+  let data = vec![I::default(); max_total_instances];
+  CpuAccessibleBuffer::from_iter(
+    device.clone(),
+    BufferUsage::vertex_buffer(),
+    false,
+    data.into_iter(),
+  )
+  .unwrap()
 }

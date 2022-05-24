@@ -7,8 +7,7 @@ mod shaders;
 mod vertex_data;
 mod vulkano_objects;
 mod swapchain_container;
+mod renderable_scene;
 
-pub use buffer_container::BufferContainer;
 pub use camera::Camera;
 pub use render_loop::RenderLoop;
-pub use vertex_data::{Vertex2d, Vertex3d};

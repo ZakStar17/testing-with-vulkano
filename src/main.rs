@@ -3,20 +3,21 @@ pub mod game_objects;
 mod keys;
 pub mod other;
 pub mod render;
+mod scene;
 
 pub use keys::{
   KeyState::{Pressed, Released},
   Keys,
 };
 
-use std::time::{Duration, Instant};
+pub use scene::Scene;
 
+use crate::app::App;
+use std::time::{Duration, Instant};
 use winit::{
   event::{Event, MouseScrollDelta, WindowEvent},
   event_loop::{ControlFlow, EventLoop},
 };
-
-use crate::app::App;
 
 const PRINT_FPS: bool = true;
 const MILLIS_BETWEEN_FPS_PRINTS: u64 = 1500;

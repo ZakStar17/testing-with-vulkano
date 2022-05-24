@@ -1,7 +1,6 @@
 use crate::{
-  game_objects::{Cube, Square},
   render::{Camera, RenderLoop},
-  Keys, Pressed, Released,
+  Keys, Pressed, Released, Scene,
 };
 use cgmath::Point3;
 use std::time::Duration;
@@ -26,12 +25,6 @@ struct Screen {
   middle: PhysicalPosition<f32>,
 }
 
-pub struct Scene {
-  pub cube1: Cube,
-  pub cube2: Cube,
-  pub square: Square,
-}
-
 pub struct App {
   render_loop: RenderLoop,
   scene: Scene,
@@ -43,7 +36,9 @@ pub struct App {
 
 impl App {
   pub fn start(event_loop: &EventLoop<()>) -> Self {
-    let render_loop = RenderLoop::new(event_loop);
+    let scene = Scene::load();
+
+    let render_loop = RenderLoop::new(event_loop, &scene);
 
     // initial window configuration
     let window = render_loop.get_window();
@@ -71,12 +66,8 @@ impl App {
     );
 
     Self {
-      render_loop: RenderLoop::new(event_loop),
-      scene: Scene {
-        cube1: Cube::new(Point3::new(5.0, 1.0, 0.0), [0.0, 0.0, 1.0]),
-        cube2: Cube::new(Point3::new(0.0, 0.0, 0.0), [0.0, 1.0, 0.0]),
-        square: Square::new(),
-      },
+      render_loop,
+      scene,
       keys: Keys::default(),
       camera,
       screen: Screen {
@@ -103,17 +94,18 @@ impl App {
   }
 
   fn update_square_position(&mut self, delta_seconds: f32) {
+    let square = self.scene.get_square_mut(0);
     if self.keys.up_key == Pressed && self.keys.s == Released {
-      self.scene.square.move_up(delta_seconds)
+      square.move_up(delta_seconds)
     }
     if self.keys.down_key == Pressed && self.keys.w == Released {
-      self.scene.square.move_down(delta_seconds)
+      square.move_down(delta_seconds)
     }
     if self.keys.left_key == Pressed && self.keys.d == Released {
-      self.scene.square.move_left(delta_seconds)
+      square.move_left(delta_seconds)
     }
     if self.keys.right_key == Pressed && self.keys.a == Released {
-      self.scene.square.move_right(delta_seconds)
+      square.move_right(delta_seconds)
     }
   }
 
@@ -123,7 +115,8 @@ impl App {
       ElementState::Released => Released,
     };
 
-    let cube_obj = &mut self.scene.cube1.object;
+    let cube = self.scene.get_cube_mut(0);
+    let renderable_cube = cube.as_renderable();
 
     match key_code {
       VirtualKeyCode::W => self.keys.w = state,
@@ -153,25 +146,25 @@ impl App {
           self.toggle_cursor_grab();
         }
         VirtualKeyCode::Numpad8 => {
-          cube_obj.move_relative_x(1.0);
+          renderable_cube.move_relative_x(1.0);
         }
         VirtualKeyCode::Numpad2 => {
-          cube_obj.move_relative_x(-1.0);
+          renderable_cube.move_relative_x(-1.0);
         }
         VirtualKeyCode::Numpad4 => {
-          cube_obj.move_relative_z(-1.0);
+          renderable_cube.move_relative_z(-1.0);
         }
         VirtualKeyCode::Numpad6 => {
-          cube_obj.move_relative_z(1.0);
+          renderable_cube.move_relative_z(1.0);
         }
         VirtualKeyCode::Numpad9 => {
-          cube_obj.move_relative_y(-1.0);
+          renderable_cube.move_relative_y(-1.0);
         }
         VirtualKeyCode::Numpad3 => {
-          cube_obj.move_relative_y(1.0);
+          renderable_cube.move_relative_y(1.0);
         }
         VirtualKeyCode::Numpad5 => {
-          self.scene.cube1.change_to_random_color();
+          cube.change_to_random_color();
         }
         _ => {}
       }
