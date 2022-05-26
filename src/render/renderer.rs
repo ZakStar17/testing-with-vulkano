@@ -167,14 +167,13 @@ impl<'a> Renderer {
     let command_buffers = self.buffer_container.command_buffers();
     let boxed: Box<dyn GpuFuture> = Box::new(
       previous_future
+        .join(swapchain_acquire_future)
         .then_execute(
           self.queue.clone(),
           command_buffers.instance_copy[image_i].clone(),
         )
         .unwrap()
-        .then_signal_semaphore()
-        .join(swapchain_acquire_future)
-        .then_execute(self.queue.clone(), command_buffers.main[image_i].clone())
+        .then_execute_same_queue(command_buffers.main[image_i].clone())
         .unwrap(),
     );
 

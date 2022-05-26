@@ -49,9 +49,9 @@ impl CommandBuffers {
           queue.clone(),
           buffers.get_instance_source(i),
           0,
-          instance_buffer.clone(),
+          instance_buffer[i].clone(),
           0,
-          instance_buffer.len(),
+          instance_buffer[i].len(),
         )
       })
       .collect();

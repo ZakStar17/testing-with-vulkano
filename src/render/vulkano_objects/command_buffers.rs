@@ -26,7 +26,7 @@ pub fn create_main<V: BufferContents + Pod, I: BufferContents + Pod + Default>(
   framebuffers
     .iter()
     .enumerate()
-    .map(|(_, framebuffer)| {
+    .map(|(i, framebuffer)| {
       let main_buffers = buffers.get_main();
 
       let mut builder = AutoCommandBufferBuilder::primary(
@@ -49,7 +49,7 @@ pub fn create_main<V: BufferContents + Pod, I: BufferContents + Pod + Default>(
       builder
         .bind_vertex_buffers(
           0,
-          (main_buffers.vertex.clone(), main_buffers.instance.clone()),
+          (main_buffers.vertex.clone(), main_buffers.instance[i].clone()),
         )
         .bind_index_buffer(main_buffers.index.clone());
 

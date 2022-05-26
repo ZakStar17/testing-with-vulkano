@@ -14,7 +14,7 @@ use vulkano::{
 pub struct MainBuffers<V: BufferContents + Pod, I: BufferContents + Pod> {
   pub vertex: Arc<ImmutableBuffer<[V]>>,
   pub index: Arc<ImmutableBuffer<[u16]>>,
-  pub instance: Arc<DeviceLocalBuffer<[I]>>,
+  pub instance: Vec<Arc<DeviceLocalBuffer<[I]>>>,
   pub model_lengths: Vec<(u32, i32)>,
 }
 
@@ -44,8 +44,9 @@ impl<V: BufferContents + Pod, I: BufferContents + Pod + Default> MainBuffers<V, 
       })
       .collect();
 
-    let instance =
-      create_device_instance(device.clone(), max_instance_count as u64, queue_families);
+    let instance = (0..3)
+      .map(|_| create_device_instance(device.clone(), max_instance_count as u64, queue_families))
+      .collect();
 
     fence.wait(None).unwrap();
 

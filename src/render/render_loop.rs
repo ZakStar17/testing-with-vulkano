@@ -85,13 +85,13 @@ impl<'a> RenderLoop {
       fence.cleanup_finished();  // this should do anything, but maybe it will help
 
       // code that updates buffers related to a single image
-
+      //
       // todo: Currently there is a single instance buffer where in the main execution future other buffers get copied to it
-      // When a copy operation happens, it should only lock the current source buffer (and then unlock it after the fence)
-      // this means that "cur_fence.wait()" should make the destination buffer useful again
-      // but for some reason, flushing a copy buffer locks every single one of them (maybe because they all write to instance)
-      // See "self.renderer.flush_next_future"
-      // I will try to create multiple instance buffers and see if it works (or else I guess I should find an unsafe way to do this)
+      // When a copy operation happens, the current source and destination buffers get locked, which means they should automatically
+      // unlock after calling "cur_fence.wait()", because it is supposed to clean and unlock all unused resources
+      // However, buffers for the current frame continue to be locked
+      // See "self.renderer.flush_next_future" for more information about execution
+      // I will do more research for this, but for now "something_needs_all_gpu_resources" will be set to always true
       self.renderer.update_matrices(image_i, camera, scene);
     }
 
