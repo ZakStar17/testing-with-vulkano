@@ -2,6 +2,8 @@ use crate::render::vulkano_objects::buffers::Buffers;
 use bytemuck::Pod;
 use std::sync::Arc;
 use vulkano::buffer::BufferContents;
+use vulkano::buffer::TypedBufferAccess;
+use vulkano::DeviceSize;
 
 use vulkano::{
   command_buffer::{
@@ -13,7 +15,7 @@ use vulkano::{
   render_pass::Framebuffer,
 };
 
-pub fn create<V: BufferContents + Pod, I: BufferContents + Pod + Default>(
+pub fn create_main<V: BufferContents + Pod, I: BufferContents + Pod + Default>(
   device: Arc<Device>,
   queue: Arc<Queue>,
   pipeline: Arc<GraphicsPipeline>,
@@ -24,7 +26,9 @@ pub fn create<V: BufferContents + Pod, I: BufferContents + Pod + Default>(
   framebuffers
     .iter()
     .enumerate()
-    .map(|(buffer_i, framebuffer)| {
+    .map(|(_, framebuffer)| {
+      let main_buffers = buffers.get_main();
+
       let mut builder = AutoCommandBufferBuilder::primary(
         device.clone(),
         queue.family(),
@@ -42,17 +46,19 @@ pub fn create<V: BufferContents + Pod, I: BufferContents + Pod + Default>(
         .bind_pipeline_graphics(pipeline.clone());
 
       // bind index and vertex buffers
-      let index_buffer = buffers.get_index();
       builder
-        .bind_vertex_buffers(0, (buffers.get_vertex(), buffers.get_instance(buffer_i)))
-        .bind_index_buffer(index_buffer);
+        .bind_vertex_buffers(
+          0,
+          (main_buffers.vertex.clone(), main_buffers.instance.clone()),
+        )
+        .bind_index_buffer(main_buffers.index.clone());
 
       // draw with offsets
       let mut index_offset = 0;
       let mut vertex_offset = 0;
       let mut instance_offset = 0;
-      for (&(index_len, vertex_len), &instance_count) in buffers
-        .get_model_lengths()
+      for (&(index_len, vertex_len), &instance_count) in main_buffers
+        .model_lengths
         .iter()
         .zip(instance_count_per_model.iter())
       {
@@ -76,4 +82,60 @@ pub fn create<V: BufferContents + Pod, I: BufferContents + Pod + Default>(
       Arc::new(builder.build().unwrap())
     })
     .collect()
+}
+
+#[allow(dead_code)]
+pub fn create_copy<T, S, D>(
+  device: Arc<Device>,
+  queue: Arc<Queue>,
+  source: Arc<S>,
+  destination: Arc<D>,
+) -> Arc<PrimaryAutoCommandBuffer>
+where
+  S: TypedBufferAccess<Content = T> + 'static,
+  D: TypedBufferAccess<Content = T> + 'static,
+{
+  let mut builder = AutoCommandBufferBuilder::primary(
+    device.clone(),
+    queue.family(),
+    CommandBufferUsage::MultipleSubmit,
+  )
+  .unwrap();
+
+  builder.copy_buffer(source, destination).unwrap();
+
+  Arc::new(builder.build().unwrap())
+}
+
+pub fn create_slice_copy<T, S, D>(
+  device: Arc<Device>,
+  queue: Arc<Queue>,
+  source: Arc<S>,
+  source_offset: DeviceSize,
+  destination: Arc<D>,
+  destination_offset: DeviceSize,
+  count: DeviceSize,
+) -> Arc<PrimaryAutoCommandBuffer>
+where
+  S: TypedBufferAccess<Content = [T]> + 'static,
+  D: TypedBufferAccess<Content = [T]> + 'static,
+{
+  let mut builder = AutoCommandBufferBuilder::primary(
+    device.clone(),
+    queue.family(),
+    CommandBufferUsage::MultipleSubmit,
+  )
+  .unwrap();
+
+  builder
+    .copy_buffer_dimensions(
+      source,
+      source_offset,
+      destination,
+      destination_offset,
+      count,
+    )
+    .unwrap();
+
+  Arc::new(builder.build().unwrap())
 }

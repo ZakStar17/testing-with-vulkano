@@ -32,7 +32,7 @@ pub struct Renderer {
   fragment_shader: Arc<ShaderModule>,
   viewport: Viewport,
   pipeline: Arc<GraphicsPipeline>,
-  buffer_container: BufferContainer,
+  pub buffer_container: BufferContainer,
 }
 
 impl<'a> Renderer {
@@ -94,6 +94,7 @@ impl<'a> Renderer {
       swapchain_container.get_framebuffers(),
       queue.clone(),
       scene,
+      [queue_family],
     );
 
     Self {
@@ -162,13 +163,18 @@ impl<'a> Renderer {
     image_i: usize,
   ) -> Result<Fence, FlushError> {
     // join with swapchain future, draw and then present, signal fence and flush
+
+    let command_buffers = self.buffer_container.command_buffers();
     let boxed: Box<dyn GpuFuture> = Box::new(
       previous_future
-        .join(swapchain_acquire_future)
         .then_execute(
           self.queue.clone(),
-          self.buffer_container.get_command_buffer(image_i).clone(),
+          command_buffers.instance_copy[image_i].clone(),
         )
+        .unwrap()
+        .then_signal_semaphore()
+        .join(swapchain_acquire_future)
+        .then_execute(self.queue.clone(), command_buffers.main[image_i].clone())
         .unwrap(),
     );
 

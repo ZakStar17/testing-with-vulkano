@@ -1,5 +1,4 @@
-use crate::Scene;
-use crate::render::{Camera};
+use crate::{render::Camera, Scene};
 use std::sync::Arc;
 use vulkano::{
   swapchain::AcquireError,
@@ -51,6 +50,9 @@ impl<'a> RenderLoop {
       self.renderer.recreate_swapchain();
     }
 
+    // for tests
+    // std::thread::sleep(std::time::Duration::from_millis(1000));
+
     let (image_i, suboptimal, acquire_future) = match self.renderer.acquire_next_swapchain_image() {
       Ok(r) => r,
       Err(AcquireError::OutOfDate) => {
@@ -64,29 +66,39 @@ impl<'a> RenderLoop {
       self.recreate_swapchain = true;
     }
 
-    if let Some(cur_fence) = &self.fences[image_i] {
+    let oldest_fence_exists = if let Some(cur_fence) = &mut self.fences[image_i] {
       // current fence will be the oldest flushed one, so waiting it won't wait upon the other futures execution
       cur_fence.wait(None).unwrap();
-    }
-
-    // code that uses objects not currently used by the GPU (corresponding to image_i)
-    self.renderer.update_matrices(image_i, camera, scene);
-
-    let something_needs_all_gpu_resources = false;
-    let previous_future = match self.fences[self.previous_fence_i].clone() {
-      None => self.renderer.synchronize().boxed(),
-      Some(fence) => {
-        if something_needs_all_gpu_resources {
-          // here fence corresponds to the earliest flushed one, so waiting it will block the CPU until GPU finishes all operations
-          fence.wait(None).unwrap();
-        }
-        fence.boxed()
-      }
+      true
+    } else {
+      false
     };
 
-    if something_needs_all_gpu_resources {
-      // the gpu has been waited, so it's currently idle. Here it's possible to update anything
+    if let Some(fence) = &mut self.fences[self.previous_fence_i].clone() {
+      let something_needs_all_gpu_resources = true;
+      if something_needs_all_gpu_resources || !oldest_fence_exists {
+        // here fence corresponds to the earliest flushed one, so waiting it will block the CPU until GPU finishes all operations
+        fence.wait(None).unwrap();
+
+        // here goes the code that updates all buffers
+      }
+      fence.cleanup_finished();  // this should do anything, but maybe it will help
+
+      // code that updates buffers related to a single image
+
+      // todo: Currently there is a single instance buffer where in the main execution future other buffers get copied to it
+      // When a copy operation happens, it should only lock the current source buffer (and then unlock it after the fence)
+      // this means that "cur_fence.wait()" should make the destination buffer useful again
+      // but for some reason, flushing a copy buffer locks every single one of them (maybe because they all write to instance)
+      // See "self.renderer.flush_next_future"
+      // I will try to create multiple instance buffers and see if it works (or else I guess I should find an unsafe way to do this)
+      self.renderer.update_matrices(image_i, camera, scene);
     }
+
+    let previous_future = match self.fences[self.previous_fence_i].clone() {
+      None => self.renderer.synchronize().boxed(),
+      Some(fence) => fence.boxed(),
+    };
 
     let result = self
       .renderer
@@ -95,6 +107,7 @@ impl<'a> RenderLoop {
     self.fences[image_i] = match result {
       Ok(fence) => Some(Arc::new(fence)),
       Err(FlushError::OutOfDate) => {
+        println!("out of date");
         self.recreate_swapchain = true;
         None
       }
