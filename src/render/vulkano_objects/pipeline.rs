@@ -10,13 +10,13 @@ use vulkano::{
       vertex_input::BuffersDefinition,
       viewport::{Viewport, ViewportState},
     },
-    GraphicsPipeline,
+    ComputePipeline, GraphicsPipeline,
   },
   render_pass::{RenderPass, Subpass},
   shader::ShaderModule,
 };
 
-pub fn create(
+pub fn create_graphics(
   device: Arc<Device>,
   vs: Arc<ShaderModule>,
   fs: Arc<ShaderModule>,
@@ -43,4 +43,15 @@ pub fn create(
     //   binding.descriptor_type = DescriptorType::UniformBufferDynamic;
     // })
     .unwrap()
+}
+
+pub fn create_compute(device: Arc<Device>, shaders: Arc<ShaderModule>) -> Arc<ComputePipeline> {
+  ComputePipeline::new(
+    device.clone(),
+    shaders.entry_point("main").unwrap(),
+    &(),
+    None,
+    |_| {},
+  )
+  .unwrap()
 }

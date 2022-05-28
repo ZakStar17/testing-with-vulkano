@@ -13,16 +13,17 @@ type FenceFuture = FenceSignalFuture<PresentFuture<Box<dyn GpuFuture>, Window>>;
 
 /// Manages synchronization with fences and is responsible for keeping all components working together
 /// each frame.
-/// 
+///
 /// The program operates on a number of main command buffers equal to the framebuffer count, as each
 /// operates on that specific framebuffer. These are not recreated each frame, so (for simplicity) the number of frames
-/// in flight is equal to the number of command buffers, and corelate directly with the swapchain image index. 
+/// in flight is equal to the number of command buffers, and corelate directly with the swapchain image index.
 pub struct RenderLoop {
   renderer: Renderer,
   recreate_swapchain: bool,
   window_resized: bool,
   fences: Vec<Option<Arc<FenceFuture>>>,
   previous_fence_i: usize,
+  update_buffer_models: Vec<bool>,
 }
 
 impl<'a> RenderLoop {
@@ -38,6 +39,7 @@ impl<'a> RenderLoop {
       window_resized: false,
       fences,
       previous_fence_i: 0,
+      update_buffer_models: vec![false; frames_in_flight],
     }
   }
 
@@ -82,25 +84,28 @@ impl<'a> RenderLoop {
       false
     };
 
+    if scene.objects_changed {
+      self.update_buffer_models.fill(true);
+    }
+    let update_buffer_models = self.update_buffer_models[image_i];
+    self.update_buffer_models[image_i] = false;
+
     if let Some(fence) = &mut self.fences[self.previous_fence_i].clone() {
-      let something_needs_all_gpu_resources = true;
+      let something_needs_all_gpu_resources = update_buffer_models;
       if something_needs_all_gpu_resources || !oldest_fence_exists {
-        // here fence corresponds to the earliest flushed one, so waiting it will block the CPU until GPU finishes all operations
+        // This fence corresponds to the earliest flushed one, so waiting it will block the CPU until GPU finishes all operations
         fence.wait(None).unwrap();
-
-        // here goes the code that updates all buffers
       }
-      fence.cleanup_finished(); // this should do anything, but maybe it will help
 
-      // code that updates buffers related to a single image
-      //
       // todo: Currently there is a single instance buffer where in the main execution future other buffers get copied to it
       // When a copy operation happens, the current source and destination buffers get locked, which means they should automatically
       // unlock after calling "cur_fence.wait()", because it is supposed to clean and unlock all unused resources
       // However, buffers for the current frame continue to be locked
       // See "self.renderer.flush_next_future" for more information about execution
-      // I will do more research for this, but for now "something_needs_all_gpu_resources" will be set to always true
-      self.renderer.update_matrices(image_i, camera, scene);
+      // I will do more research for this, but for now "something_needs_all_gpu_resources" will be true when this operation happens
+      if update_buffer_models {
+        self.renderer.update_buffer_models(image_i, scene);
+      }
     }
 
     let previous_future = match self.fences[self.previous_fence_i].clone() {
@@ -108,9 +113,13 @@ impl<'a> RenderLoop {
       Some(fence) => fence.boxed(),
     };
 
-    let result = self
-      .renderer
-      .flush_next_future(previous_future, acquire_future, image_i);
+    let result = self.renderer.flush_next_future(
+      previous_future,
+      acquire_future,
+      image_i,
+      camera,
+      scene.total_object_count,
+    );
 
     self.fences[image_i] = match result {
       Ok(fence) => Some(Arc::new(fence)),

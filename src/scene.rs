@@ -10,6 +10,8 @@ use std::f32::consts::PI;
 pub struct Scene {
   pub cubes: Vec<Cube>,
   pub squares: Vec<Square>,
+  pub objects_changed: bool,
+  pub total_object_count: usize,
 }
 
 impl Scene {
@@ -24,7 +26,14 @@ impl Scene {
     };
     let squares = vec![Square::new()];
 
-    Scene { cubes, squares }
+    let total_object_count = cubes.len() + squares.len();
+
+    Scene {
+      cubes,
+      squares,
+      objects_changed: true,
+      total_object_count,
+    }
   }
 
   fn get_random_cubes() -> Vec<Cube> {
@@ -61,10 +70,12 @@ impl Scene {
   }
 
   pub fn get_cube_mut(&mut self, i: usize) -> &mut Cube {
+    self.objects_changed = true;
     &mut self.cubes[i]
   }
 
   pub fn get_square_mut(&mut self, i: usize) -> &mut Square {
+    self.objects_changed = true;
     &mut self.squares[i]
   }
 }

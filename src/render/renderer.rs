@@ -1,8 +1,9 @@
 use crate::{
   render::{
     buffer_container::BufferContainer,
-    shaders::single_colored,
+    shaders::{compute, single_colored},
     swapchain_container::SwapchainContainer,
+    vertex_data::{MatrixInstance, Vertex3d},
     vulkano_objects,
     vulkano_objects::{QueueFamilies, Queues},
     Camera,
@@ -13,7 +14,7 @@ use std::sync::Arc;
 use vulkano::{
   device::{Device, DeviceCreateInfo, DeviceExtensions},
   instance::Instance,
-  pipeline::{graphics::viewport::Viewport, GraphicsPipeline},
+  pipeline::{graphics::viewport::Viewport, ComputePipeline, GraphicsPipeline},
   shader::ShaderModule,
   swapchain::{AcquireError, PresentFuture, Surface, SwapchainAcquireFuture},
   sync::{self, FenceSignalFuture, FlushError, GpuFuture, NowFuture},
@@ -36,8 +37,9 @@ pub struct Renderer {
   vertex_shader: Arc<ShaderModule>,
   fragment_shader: Arc<ShaderModule>,
   viewport: Viewport,
-  pipeline: Arc<GraphicsPipeline>,
-  pub buffer_container: BufferContainer,
+  graphics_pipeline: Arc<GraphicsPipeline>,
+  compute_pipeline: Arc<ComputePipeline>,
+  buffer_container: BufferContainer,
 }
 
 impl<'a> Renderer {
@@ -86,7 +88,7 @@ impl<'a> Renderer {
       depth_range: 0.0..1.0,
     };
 
-    let pipeline = vulkano_objects::pipeline::create(
+    let graphics_pipeline = vulkano_objects::pipeline::create_graphics(
       device.clone(),
       vertex_shader.clone(),
       fragment_shader.clone(),
@@ -94,11 +96,17 @@ impl<'a> Renderer {
       viewport.clone(),
     );
 
+    let compute_pipeline = vulkano_objects::pipeline::create_compute(
+      device.clone(),
+      compute::instance::load(device.clone()).unwrap(),
+    );
+
     let buffer_container = BufferContainer::new(
       device.clone(),
       &queue_families,
       &queues,
-      pipeline.clone(),
+      graphics_pipeline.clone(),
+      compute_pipeline.clone(),
       swapchain_container.get_framebuffers(),
       scene,
     );
@@ -111,7 +119,8 @@ impl<'a> Renderer {
       vertex_shader,
       fragment_shader,
       viewport,
-      pipeline,
+      graphics_pipeline,
+      compute_pipeline,
       buffer_container,
       _instance: instance,
     }
@@ -130,7 +139,7 @@ impl<'a> Renderer {
       .recreate_swapchain(self.device.clone(), self.surface.clone());
     self.viewport.dimensions = self.surface.window().inner_size().into();
 
-    self.pipeline = vulkano_objects::pipeline::create(
+    self.graphics_pipeline = vulkano_objects::pipeline::create_graphics(
       self.device.clone(),
       self.vertex_shader.clone(),
       self.fragment_shader.clone(),
@@ -141,7 +150,7 @@ impl<'a> Renderer {
     self.buffer_container.handle_window_resize(
       self.device.clone(),
       self.queues.graphics.clone(),
-      self.pipeline.clone(),
+      self.graphics_pipeline.clone(),
       self.swapchain_container.get_framebuffers(),
     );
   }
@@ -170,19 +179,33 @@ impl<'a> Renderer {
     previous_future: Box<dyn GpuFuture>,
     swapchain_acquire_future: SwapchainAcquireFuture<Window>,
     image_i: usize,
+    camera: &Camera,
+    instance_count: usize,
   ) -> Result<FenceSignalFuture<PresentFuture<Box<dyn GpuFuture>, Window>>, FlushError> {
     // join with swapchain future, draw and then present, signal fence and flush
 
     let command_buffers = self.buffer_container.command_buffers();
-    let boxed: Box<dyn GpuFuture> = Box::new(
+    let descriptor_sets = self.buffer_container.descriptor_sets();
+
+    // updates instance buffer by calculating projection-view-model matrices
+    let instance_compute_command_buffer =
+      vulkano_objects::command_buffers::create_instance_compute::<Vertex3d, MatrixInstance, _>(
+        self.device.clone(),
+        self.queues.compute.clone(),
+        self.compute_pipeline.clone(),
+        descriptor_sets.instance[image_i].clone(),
+        compute::instance::ty::PushConstantData {
+          projection_view: camera.get_projection_view().into(),
+        },
+        instance_count,
+      );
+
+    let with_main: Box<dyn GpuFuture> = Box::new(
       previous_future
-        .join(swapchain_acquire_future)
-        .then_execute(
-          self.queues.transfers.clone(),
-          command_buffers.instance_copy[image_i].clone(),
-        )
+        .then_execute(self.queues.compute.clone(), instance_compute_command_buffer)
         .unwrap()
         .then_signal_semaphore()
+        .join(swapchain_acquire_future)
         .then_execute(
           self.queues.graphics.clone(),
           command_buffers.main[image_i].clone(),
@@ -190,7 +213,7 @@ impl<'a> Renderer {
         .unwrap(),
     );
 
-    boxed
+    with_main
       .then_swapchain_present(
         self.queues.graphics.clone(),
         self.swapchain_container.get_swapchain(),
@@ -199,10 +222,10 @@ impl<'a> Renderer {
       .then_signal_fence_and_flush()
   }
 
-  pub fn update_matrices(&mut self, buffer_i: usize, camera: &Camera, scene: &Scene) {
+  pub fn update_buffer_models(&mut self, buffer_i: usize, scene: &Scene) {
     self
       .buffer_container
-      .update_matrices(buffer_i, scene, camera.get_projection_view());
+      .update_buffer_models(buffer_i, scene);
   }
 
   pub fn get_surface_window(&self) -> &Window {

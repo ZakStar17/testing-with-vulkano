@@ -3,6 +3,8 @@ use bytemuck::Pod;
 use std::sync::Arc;
 use vulkano::{
   buffer::{BufferContents, TypedBufferAccess},
+  descriptor_set::PersistentDescriptorSet,
+  pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
   DeviceSize,
 };
 
@@ -108,6 +110,7 @@ where
   Arc::new(builder.build().unwrap())
 }
 
+#[allow(dead_code)]
 pub fn create_slice_copy<T, S, D>(
   device: Arc<Device>,
   transfers_queue: Arc<Queue>,
@@ -138,5 +141,34 @@ where
     )
     .unwrap();
 
+  Arc::new(builder.build().unwrap())
+}
+
+pub fn create_instance_compute<V: BufferContents + Pod, I: BufferContents + Pod + Default, Pc>(
+  device: Arc<Device>,
+  compute_queue: Arc<Queue>,
+  compute_pipeline: Arc<ComputePipeline>,
+  descriptor_set: Arc<PersistentDescriptorSet>,
+  push_constants: Pc,
+  instance_count: usize,
+) -> Arc<PrimaryAutoCommandBuffer> {
+  let mut builder = AutoCommandBufferBuilder::primary(
+    device.clone(),
+    compute_queue.family(),
+    CommandBufferUsage::OneTimeSubmit,
+  )
+  .unwrap();
+  builder
+    .bind_pipeline_compute(compute_pipeline.clone())
+    .push_constants(compute_pipeline.layout().clone(), 0, push_constants)
+    .bind_descriptor_sets(
+      PipelineBindPoint::Compute,
+      compute_pipeline.layout().clone(),
+      0,
+      descriptor_set,
+    )
+    .dispatch([(instance_count / 64 + 1) as u32, 1, 1])
+    .unwrap();
+  // Finish building the command buffer by calling `build`.
   Arc::new(builder.build().unwrap())
 }

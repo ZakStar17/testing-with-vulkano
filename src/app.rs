@@ -93,18 +93,17 @@ impl App {
   }
 
   fn update_square_position(&mut self, delta_seconds: f32) {
-    let square = self.scene.get_square_mut(0);
     if self.keys.up_key == Pressed && self.keys.s == Released {
-      square.move_up(delta_seconds)
+      self.scene.get_square_mut(0).move_up(delta_seconds)
     }
     if self.keys.down_key == Pressed && self.keys.w == Released {
-      square.move_down(delta_seconds)
+      self.scene.get_square_mut(0).move_down(delta_seconds)
     }
     if self.keys.left_key == Pressed && self.keys.d == Released {
-      square.move_left(delta_seconds)
+      self.scene.get_square_mut(0).move_left(delta_seconds)
     }
     if self.keys.right_key == Pressed && self.keys.a == Released {
-      square.move_right(delta_seconds)
+      self.scene.get_square_mut(0).move_right(delta_seconds)
     }
   }
 
@@ -113,9 +112,6 @@ impl App {
       ElementState::Pressed => Pressed,
       ElementState::Released => Released,
     };
-
-    let cube = self.scene.get_cube_mut(0);
-    let renderable_cube = cube.as_renderable();
 
     match key_code {
       VirtualKeyCode::W => self.keys.w = state,
@@ -145,22 +141,46 @@ impl App {
           self.toggle_cursor_grab();
         }
         VirtualKeyCode::Numpad8 => {
-          renderable_cube.move_relative_x(1.0);
+          self
+            .scene
+            .get_cube_mut(0)
+            .as_renderable()
+            .move_relative_x(1.0);
         }
         VirtualKeyCode::Numpad2 => {
-          renderable_cube.move_relative_x(-1.0);
+          self
+            .scene
+            .get_cube_mut(0)
+            .as_renderable()
+            .move_relative_x(-1.0);
         }
         VirtualKeyCode::Numpad4 => {
-          renderable_cube.move_relative_z(-1.0);
+          self
+            .scene
+            .get_cube_mut(0)
+            .as_renderable()
+            .move_relative_z(-1.0);
         }
         VirtualKeyCode::Numpad6 => {
-          renderable_cube.move_relative_z(1.0);
+          self
+            .scene
+            .get_cube_mut(0)
+            .as_renderable()
+            .move_relative_z(1.0);
         }
         VirtualKeyCode::Numpad9 => {
-          renderable_cube.move_relative_y(-1.0);
+          self
+            .scene
+            .get_cube_mut(0)
+            .as_renderable()
+            .move_relative_y(-1.0);
         }
         VirtualKeyCode::Numpad3 => {
-          renderable_cube.move_relative_y(1.0);
+          self
+            .scene
+            .get_cube_mut(0)
+            .as_renderable()
+            .move_relative_y(1.0);
         }
         _ => {}
       }

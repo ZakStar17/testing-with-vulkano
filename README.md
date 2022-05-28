@@ -14,13 +14,11 @@ I try to optimize everything as much as I can (without complicating everything t
 This is how thing are currently drawn:
 
 - Single vertex, uniform and instance buffer (with no indirect drawing);
-- Separate command buffers for copying data (like model-projection-view matrices);
-- Multiple command buffers that do not get recreated each frame;
+- Special command buffer that uses push constants to calculate model-projection-view matrices;
+- Multiple main command buffers that do not get recreated each frame;
 
 Currently working on:
 
-- Compute pipelines and command buffers which handle non graphic calculations and copying;
-- Multiple queues and better synchronization;
 - Textures and model loading;
 
 Current problems:

@@ -7,19 +7,17 @@ use crate::{
   },
   Scene, GENERATE_CUBES,
 };
-use cgmath::Matrix4;
 use std::sync::Arc;
 use vulkano::{
-  buffer::TypedBufferAccess,
   command_buffer::PrimaryAutoCommandBuffer,
+  descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
   device::{Device, Queue},
-  pipeline::GraphicsPipeline,
+  pipeline::{ComputePipeline, GraphicsPipeline, Pipeline},
   render_pass::Framebuffer,
 };
 
 pub struct CommandBuffers {
   pub main: Vec<Arc<PrimaryAutoCommandBuffer>>,
-  pub instance_copy: Vec<Arc<PrimaryAutoCommandBuffer>>,
 }
 
 impl CommandBuffers {
@@ -40,25 +38,7 @@ impl CommandBuffers {
       &instance_count_per_model,
     );
 
-    let instance_buffer = &buffers.get_main().instance;
-    let instance_copy = (0..main.len())
-      .map(|i| {
-        vulkano_objects::command_buffers::create_slice_copy(
-          device.clone(),
-          queues.transfers.clone(),
-          buffers.get_instance_source(i),
-          0,
-          instance_buffer.clone(),
-          0,
-          instance_buffer.len(),
-        )
-      })
-      .collect();
-
-    Self {
-      main,
-      instance_copy,
-    }
+    Self { main }
   }
 
   pub fn recreate_main(
@@ -81,10 +61,15 @@ impl CommandBuffers {
   }
 }
 
-// responsible for managing data between existing buffers and command_buffers
+pub struct DescriptorSets {
+  pub instance: Vec<Arc<PersistentDescriptorSet>>,
+}
+
+/// responsible for managing data between existing buffers and command_buffers
 pub struct BufferContainer {
   command_buffers: CommandBuffers,
   buffers: Buffers<Vertex3d, MatrixInstance>,
+  descriptor_sets: DescriptorSets,
   instance_count_per_model_cache: Vec<u32>,
 }
 
@@ -93,7 +78,8 @@ impl BufferContainer {
     device: Arc<Device>,
     queue_families: &QueueFamilies,
     queues: &Queues,
-    pipeline: Arc<GraphicsPipeline>,
+    graphics_pipeline: Arc<GraphicsPipeline>,
+    compute_pipeline: Arc<ComputePipeline>,
     framebuffers: &Vec<Arc<Framebuffer>>,
     scene: &Scene,
   ) -> Self {
@@ -113,6 +99,22 @@ impl BufferContainer {
       max_instances,
     );
 
+    let layout = compute_pipeline.layout().set_layouts().get(0).unwrap();
+    let descriptor_sets = DescriptorSets {
+      instance: (0..3)
+        .map(|i| {
+          PersistentDescriptorSet::new(
+            layout.clone(),
+            [
+              WriteDescriptorSet::buffer(0, buffers.get_instance_source_model(i).clone()),
+              WriteDescriptorSet::buffer(1, buffers.get_main().instance.clone()),
+            ],
+          )
+          .unwrap()
+        })
+        .collect(),
+    };
+
     let instance_count_per_model: Vec<u32> = RenderableScene::instance_count_per_model(scene)
       .drain(0..)
       .map(|n| n as u32)
@@ -121,7 +123,7 @@ impl BufferContainer {
     let command_buffers = CommandBuffers::create(
       device,
       queues,
-      pipeline,
+      graphics_pipeline,
       framebuffers,
       &buffers,
       &instance_count_per_model,
@@ -129,6 +131,7 @@ impl BufferContainer {
 
     Self {
       buffers,
+      descriptor_sets,
       command_buffers,
       instance_count_per_model_cache: instance_count_per_model,
     }
@@ -151,12 +154,12 @@ impl BufferContainer {
     )
   }
 
-  pub fn update_matrices(&mut self, buffer_i: usize, scene: &Scene, projection_view: Matrix4<f32>) {
-    self.buffers.update_matrices(
+  pub fn update_buffer_models(&mut self, buffer_i: usize, scene: &Scene) {
+    self.buffers.update_instance_source_models(
       buffer_i,
       RenderableScene::into_matrices(scene)
         .map(|model| MatrixInstance {
-          matrix: (projection_view * model).into(),
+          matrix: model.into(),
         })
         .collect(),
     )
@@ -164,5 +167,9 @@ impl BufferContainer {
 
   pub fn command_buffers(&self) -> &CommandBuffers {
     &self.command_buffers
+  }
+
+  pub fn descriptor_sets(&self) -> &DescriptorSets {
+    &self.descriptor_sets
   }
 }

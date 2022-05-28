@@ -59,8 +59,8 @@ impl<V: BufferContents + Pod, I: BufferContents + Pod + Default> MainBuffers<V, 
 pub struct Buffers<V: BufferContents + Pod, I: BufferContents + Pod> {
   main: MainBuffers<V, I>,
 
-  // used to load data to instance
-  instance_source: Vec<Arc<CpuAccessibleBuffer<[I]>>>,
+  /// Used in the compute shader in order to calculate instance matrices on the gpu
+  instance_source_models: Vec<Arc<CpuAccessibleBuffer<[I]>>>,
 }
 
 impl<V: BufferContents + Pod, I: BufferContents + Pod + Default> Buffers<V, I> {
@@ -72,8 +72,11 @@ impl<V: BufferContents + Pod, I: BufferContents + Pod + Default> Buffers<V, I> {
     models: &Vec<Box<dyn Model<V>>>,
     max_instance_count: usize,
   ) -> Self {
-    let instance_source =
-      vec![create_cpu_accessible_instance_source(device.clone(), max_instance_count); buffer_count];
+    let instance_source_models =
+      vec![
+        create_cpu_accessible_instance_source_models(device.clone(), max_instance_count);
+        buffer_count
+      ];
 
     Self {
       main: MainBuffers::new(
@@ -83,12 +86,12 @@ impl<V: BufferContents + Pod, I: BufferContents + Pod + Default> Buffers<V, I> {
         models,
         max_instance_count,
       ),
-      instance_source,
+      instance_source_models,
     }
   }
 
-  pub fn update_matrices(&mut self, buffer_i: usize, data: Vec<I>) {
-    let mut content = self.instance_source[buffer_i]
+  pub fn update_instance_source_models(&mut self, buffer_i: usize, data: Vec<I>) {
+    let mut content = self.instance_source_models[buffer_i]
       .write()
       .unwrap_or_else(|e| panic!("Failed to write to instance buffer\n{}", e));
 
@@ -99,8 +102,8 @@ impl<V: BufferContents + Pod, I: BufferContents + Pod + Default> Buffers<V, I> {
     &self.main
   }
 
-  pub fn get_instance_source(&self, buffer_i: usize) -> Arc<CpuAccessibleBuffer<[I]>> {
-    self.instance_source[buffer_i].clone()
+  pub fn get_instance_source_model(&self, buffer_i: usize) -> Arc<CpuAccessibleBuffer<[I]>> {
+    self.instance_source_models[buffer_i].clone()
   }
 }
 
@@ -151,16 +154,17 @@ where
   DeviceLocalBuffer::array(
     device.clone(),
     max_total_instances,
-    BufferUsage::vertex_buffer_transfer_destination(),
-    [
-      queue_families.compute,
-      queue_families.transfers,
-    ],
+    BufferUsage {
+      storage_buffer: true,
+      vertex_buffer: true,
+      ..BufferUsage::none()
+    },
+    [queue_families.compute, queue_families.transfers],
   )
   .unwrap()
 }
 
-fn create_cpu_accessible_instance_source<I>(
+fn create_cpu_accessible_instance_source_models<I>(
   device: Arc<Device>,
   max_total_instances: usize,
 ) -> Arc<CpuAccessibleBuffer<[I]>>
@@ -170,7 +174,11 @@ where
   let data = vec![I::default(); max_total_instances];
   CpuAccessibleBuffer::from_iter(
     device.clone(),
-    BufferUsage::transfer_source(),
+    BufferUsage {
+      storage_buffer: true,
+      transfer_source: true,
+      ..BufferUsage::none()
+    },
     false,
     data.into_iter(),
   )
