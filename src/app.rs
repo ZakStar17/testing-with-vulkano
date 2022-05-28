@@ -162,9 +162,6 @@ impl App {
         VirtualKeyCode::Numpad3 => {
           renderable_cube.move_relative_y(1.0);
         }
-        VirtualKeyCode::Numpad5 => {
-          cube.change_to_random_color();
-        }
         _ => {}
       }
     }

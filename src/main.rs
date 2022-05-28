@@ -39,6 +39,9 @@ const MILLIS_BETWEEN_RESIZING: u64 = 50;
 pub const CAMERA_NORMAL_SPEED: f32 = 2.0;
 pub const CAMERA_FAST_SPEED: f32 = 10.0;
 
+/// Will generate value.pow(3) cubes around the camera if not None
+pub const GENERATE_CUBES: Option<usize> = None;
+
 /// Contains the main event loop and matches events that get handled by [`App`]
 fn main() {
   let event_loop = EventLoop::new();

@@ -5,7 +5,7 @@ use crate::{
     vulkano_objects,
     vulkano_objects::buffers::Buffers,
   },
-  Scene,
+  Scene, GENERATE_CUBES,
 };
 use cgmath::Matrix4;
 use std::sync::Arc;
@@ -97,13 +97,19 @@ impl BufferContainer {
     scene: &Scene,
     queue_families: [QueueFamily; 1],
   ) -> Self {
+    let max_instances = if let Some(value) = GENERATE_CUBES {
+      (value * value * value) + 256
+    } else {
+      256
+    };
+
     // uniform buffer count is assigned to the number of image, in this case the number of framebuffers
     let buffers = Buffers::<Vertex3d, MatrixInstance>::initialize(
       device.clone(),
       framebuffers.len(),
       queue.clone(),
       &RenderableScene::get_models(),
-      1024,
+      max_instances,
       queue_families,
     );
 
