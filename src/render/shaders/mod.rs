@@ -1,6 +1,6 @@
-pub mod movable_square;
+/// Contains everything related to shaders
+
 pub mod single_colored;
 mod traits;
-pub mod triangle;
 
 pub use traits::UniformShader;

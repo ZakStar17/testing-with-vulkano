@@ -12,7 +12,7 @@ use vulkano::{
 };
 use winit::window::Window;
 
-// contains everything that depends on the swapchain
+/// Manages swapchain related objects
 pub struct SwapchainContainer {
   swapchain: Arc<Swapchain<Window>>,
   swapchain_images: Vec<Arc<SwapchainImage<winit::window::Window>>>,

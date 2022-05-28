@@ -1,6 +1,6 @@
 use crate::{
   render::{Camera, RenderLoop},
-  Keys, Pressed, Released, Scene,
+  Keys, Pressed, Released, Scene, CAMERA_FAST_SPEED, CAMERA_NORMAL_SPEED,
 };
 use cgmath::Point3;
 use std::time::Duration;
@@ -10,9 +10,6 @@ use winit::{
   event_loop::EventLoop,
 };
 
-const CAMERA_NORMAL_SPEED: f32 = 2.0;
-const CAMERA_FAST_SPEED: f32 = 10.0;
-
 pub struct Mouse {
   pub delta_x: f32,
   pub delta_y: f32,
@@ -20,11 +17,13 @@ pub struct Mouse {
   getting_grabbed: bool,
 }
 
-// Additional information related to the window
+/// Additional information related to the window
 struct Screen {
   middle: PhysicalPosition<f32>,
 }
 
+/// # Main application
+/// Contains most of the program objects and handles events related with the window.
 pub struct App {
   render_loop: RenderLoop,
   scene: Scene,

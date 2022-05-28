@@ -1,3 +1,9 @@
+//! Welcome to the Vulkano testing project docs!
+//! 
+//! The main struct is [`App`]. You can start by looking at it, and then progress to
+//! the other modules.
+
+
 pub mod app;
 pub mod game_objects;
 mod keys;
@@ -11,8 +17,8 @@ pub use keys::{
 };
 
 pub use scene::Scene;
+pub use app::App;
 
-use crate::app::App;
 use std::time::{Duration, Instant};
 use winit::{
   event::{Event, MouseScrollDelta, WindowEvent},
@@ -22,13 +28,18 @@ use winit::{
 const PRINT_FPS: bool = true;
 const MILLIS_BETWEEN_FPS_PRINTS: u64 = 1500;
 
-// If a window is resized or moved, there are some calculations
-// in rendering that need to be done
-// In order to wait for the user to finish performing his action,
-// the app waits a specific amount of time before resuming drawing
+/// When a window is resized or moved, the program needs to recreate some of its
+/// objects, which takes a bit of time
+/// In order to not completely lag the window, the program waits this specific
+/// amount of time in order for the user to finish his action and then resumes drawing
 const MILLIS_BETWEEN_MOVING: u64 = 200;
+/// See [`MILLIS_BETWEEN_MOVING`]
 const MILLIS_BETWEEN_RESIZING: u64 = 50;
 
+pub const CAMERA_NORMAL_SPEED: f32 = 2.0;
+pub const CAMERA_FAST_SPEED: f32 = 10.0;
+
+/// Contains the main event loop and matches events that get handled by [`App`]
 fn main() {
   let event_loop = EventLoop::new();
   let mut app = App::start(&event_loop);

@@ -1,12 +1,10 @@
 use crate::render::models::Model;
 use bytemuck::Pod;
 use std::sync::Arc;
-use vulkano::buffer::DeviceLocalBuffer;
-use vulkano::device::physical::QueueFamily;
 use vulkano::{
-  buffer::{BufferContents, BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
+  buffer::{BufferContents, BufferUsage, CpuAccessibleBuffer, DeviceLocalBuffer, ImmutableBuffer},
   command_buffer::{CommandBufferExecFuture, PrimaryAutoCommandBuffer},
-  device::{Device, Queue},
+  device::{physical::QueueFamily, Device, Queue},
   sync::{GpuFuture, NowFuture},
 };
 
@@ -14,7 +12,7 @@ use vulkano::{
 pub struct MainBuffers<V: BufferContents + Pod, I: BufferContents + Pod> {
   pub vertex: Arc<ImmutableBuffer<[V]>>,
   pub index: Arc<ImmutableBuffer<[u16]>>,
-  pub instance: Vec<Arc<DeviceLocalBuffer<[I]>>>,
+  pub instance: Arc<DeviceLocalBuffer<[I]>>,
   pub model_lengths: Vec<(u32, i32)>,
 }
 
@@ -44,9 +42,8 @@ impl<V: BufferContents + Pod, I: BufferContents + Pod + Default> MainBuffers<V, 
       })
       .collect();
 
-    let instance = (0..3)
-      .map(|_| create_device_instance(device.clone(), max_instance_count as u64, queue_families))
-      .collect();
+    let instance =
+      create_device_instance(device.clone(), max_instance_count as u64, queue_families);
 
     fence.wait(None).unwrap();
 

@@ -5,6 +5,8 @@ pub trait RenderableIn3d {
   fn get_model_matrix(&self) -> Matrix4<f32>;
 }
 
+/// Object information suitable for rendering in 3D. Caches certain matrices
+/// in order to perform less calculations while rendering.
 pub struct Renderable3dObject {
   position: Point3<f32>,
   translation_matrix: Matrix4<f32>,

@@ -6,16 +6,21 @@ use crate::{app::Mouse, Keys, Pressed};
 
 const HALF_PI: f32 = PI / 2.0;
 
+/// Camera with dynamic up / down directions.
 pub struct Camera {
   pub position: Point3<f32>,
+  /// Vector pointing to the front
   pub front: Vector3<f32>,
+  /// Vector pointing up
   pub up: Vector3<f32>,
   pub yaw: f32,
   pub pitch: f32,
   pub speed: f32,
+  /// Used in mouse movement rotation calculations
   pub sensitivity: f32,
   pub fov: f32,
   aspect_ratio: f32,
+  /// Cached because it's not frequently updated
   projection_matrix: Matrix4<f32>,
 }
 

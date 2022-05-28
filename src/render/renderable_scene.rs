@@ -9,13 +9,13 @@ use crate::{
 use cgmath::Matrix4;
 use std::iter::Iterator;
 
-// ordered abstraction of all scene objects
-// todo: should be a macro to implement all Scene objects automatically
+/// Orders all objects that exists in [`Scene`] so that they can be more easily stored and drawn from Vulkan buffers
+/// todo: should be a macro to implement all Scene objects automatically
 pub struct RenderableScene;
 
 impl RenderableScene {
-  // this function took me 2 hours because of a simple error
   pub fn into_matrices<'a>(scene: &'a Scene) -> impl Iterator<Item = Matrix4<f32>> + '_ {
+    // this function took me 2 hours to fix because of a simple error
     // transform into iterator
     let renderable_cubes = scene.cubes.iter().map(|cube| cube as &dyn RenderableIn3d);
 

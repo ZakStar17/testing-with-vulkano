@@ -1,19 +1,27 @@
-use crate::{render::Camera, Scene};
+use crate::{
+  render::{renderer::Renderer, Camera},
+  Scene,
+};
 use std::sync::Arc;
 use vulkano::{
-  swapchain::AcquireError,
-  sync::{FlushError, GpuFuture},
+  swapchain::{AcquireError, PresentFuture},
+  sync::{FenceSignalFuture, FlushError, GpuFuture},
 };
 use winit::{event_loop::EventLoop, window::Window};
 
-use crate::render::renderer::{Fence, Renderer};
+type FenceFuture = FenceSignalFuture<PresentFuture<Box<dyn GpuFuture>, Window>>;
 
-// responsible for CPU level synchronization
+/// Manages synchronization with fences and is responsible for keeping all components working together
+/// each frame.
+/// 
+/// The program operates on a number of main command buffers equal to the framebuffer count, as each
+/// operates on that specific framebuffer. These are not recreated each frame, so (for simplicity) the number of frames
+/// in flight is equal to the number of command buffers, and corelate directly with the swapchain image index. 
 pub struct RenderLoop {
   renderer: Renderer,
   recreate_swapchain: bool,
   window_resized: bool,
-  fences: Vec<Option<Arc<Fence>>>,
+  fences: Vec<Option<Arc<FenceFuture>>>,
   previous_fence_i: usize,
 }
 
@@ -21,13 +29,8 @@ impl<'a> RenderLoop {
   pub fn new(event_loop: &EventLoop<()>, scene: &Scene) -> Self {
     let renderer = Renderer::initialize(event_loop, scene);
 
-    // each main command buffer is created with a specific framebuffer in mid, which depend on the swapchain images
-    // what this means is that the number of command buffers is equal to the image count
-
-    // in that sense, it's most effective to use image count as the number of frames in flight, as there is no
-    // need to perform distinctions between command buffers and fence futures
     let frames_in_flight = renderer.get_image_count();
-    let fences: Vec<Option<Arc<Fence>>> = vec![None; frames_in_flight];
+    let fences = vec![None; frames_in_flight];
 
     Self {
       renderer,
@@ -38,6 +41,11 @@ impl<'a> RenderLoop {
     }
   }
 
+  /// - Handles window resizing and swapchain recreation;
+  /// - Acquires next swapchain image
+  /// - Waits for fences
+  /// - Updates components calls for buffer update commands
+  /// - Flushes next future
   pub fn update(&mut self, camera: &Camera, scene: &Scene) {
     if self.window_resized {
       self.window_resized = false;
@@ -82,7 +90,7 @@ impl<'a> RenderLoop {
 
         // here goes the code that updates all buffers
       }
-      fence.cleanup_finished();  // this should do anything, but maybe it will help
+      fence.cleanup_finished(); // this should do anything, but maybe it will help
 
       // code that updates buffers related to a single image
       //
@@ -120,11 +128,12 @@ impl<'a> RenderLoop {
     self.previous_fence_i = image_i;
   }
 
+  /// Signal that window should be handled in the next update
   pub fn handle_window_resize(&mut self) {
-    // impacts the next update
     self.window_resized = true;
   }
 
+  /// Returns surface window
   pub fn get_window(&self) -> &Window {
     self.renderer.get_surface_window()
   }

@@ -1,8 +1,7 @@
-use crate::{
-  game_objects::{Cube, Square},
-};
+use crate::game_objects::{Cube, Square};
 use cgmath::Point3;
 
+/// Contains game objects not directly related to rendering
 pub struct Scene {
   pub cubes: Vec<Cube>,
   pub squares: Vec<Square>,
@@ -16,9 +15,7 @@ impl Scene {
     ];
     let squares = vec![Square::new()];
 
-    Scene {
-      cubes, squares
-    }
+    Scene { cubes, squares }
   }
 
   pub fn get_cube_mut(&mut self, i: usize) -> &mut Cube {

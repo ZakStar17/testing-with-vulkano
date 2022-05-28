@@ -1,3 +1,4 @@
+/// State of each key
 #[derive(PartialEq, Clone, Copy)]
 pub enum KeyState {
   Pressed,
@@ -10,6 +11,7 @@ impl Default for KeyState {
   }
 }
 
+/// struct that contains information about each pressed / not pressed key
 #[derive(Default)]
 pub struct Keys {
   pub a: KeyState,

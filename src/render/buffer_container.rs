@@ -9,11 +9,10 @@ use crate::{
 };
 use cgmath::Matrix4;
 use std::sync::Arc;
-use vulkano::buffer::TypedBufferAccess;
-use vulkano::device::physical::QueueFamily;
 use vulkano::{
+  buffer::TypedBufferAccess,
   command_buffer::PrimaryAutoCommandBuffer,
-  device::{Device, Queue},
+  device::{physical::QueueFamily, Device, Queue},
   pipeline::GraphicsPipeline,
   render_pass::Framebuffer,
 };
@@ -49,9 +48,9 @@ impl CommandBuffers {
           queue.clone(),
           buffers.get_instance_source(i),
           0,
-          instance_buffer[i].clone(),
+          instance_buffer.clone(),
           0,
-          instance_buffer[i].len(),
+          instance_buffer.len(),
         )
       })
       .collect();

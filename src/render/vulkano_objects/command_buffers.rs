@@ -1,9 +1,10 @@
 use crate::render::vulkano_objects::buffers::Buffers;
 use bytemuck::Pod;
 use std::sync::Arc;
-use vulkano::buffer::BufferContents;
-use vulkano::buffer::TypedBufferAccess;
-use vulkano::DeviceSize;
+use vulkano::{
+  buffer::{BufferContents, TypedBufferAccess},
+  DeviceSize,
+};
 
 use vulkano::{
   command_buffer::{
@@ -26,7 +27,7 @@ pub fn create_main<V: BufferContents + Pod, I: BufferContents + Pod + Default>(
   framebuffers
     .iter()
     .enumerate()
-    .map(|(i, framebuffer)| {
+    .map(|(_, framebuffer)| {
       let main_buffers = buffers.get_main();
 
       let mut builder = AutoCommandBufferBuilder::primary(
@@ -49,7 +50,7 @@ pub fn create_main<V: BufferContents + Pod, I: BufferContents + Pod + Default>(
       builder
         .bind_vertex_buffers(
           0,
-          (main_buffers.vertex.clone(), main_buffers.instance[i].clone()),
+          (main_buffers.vertex.clone(), main_buffers.instance.clone()),
         )
         .bind_index_buffer(main_buffers.index.clone());
 

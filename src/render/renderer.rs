@@ -20,8 +20,9 @@ use winit::{
   window::{Window, WindowBuilder},
 };
 
-pub type Fence = FenceSignalFuture<PresentFuture<Box<dyn GpuFuture>, Window>>;
-
+/// Contains arbitrary functions that modify certain Vulkano objects.
+/// 
+/// Doesn't understand synchronization which is handled in `RenderLoop`.
 pub struct Renderer {
   surface: Arc<Surface<Window>>,
   _instance: Arc<Instance>,
@@ -36,6 +37,7 @@ pub struct Renderer {
 }
 
 impl<'a> Renderer {
+  /// Creates all main Vulkano objects and saves them
   pub fn initialize(event_loop: &EventLoop<()>, scene: &Scene) -> Self {
     let instance = vulkano_objects::instance::create();
 
@@ -117,6 +119,7 @@ impl<'a> Renderer {
       .recreate_swapchain(self.device.clone(), self.surface.clone())
   }
 
+  /// Recreates swapchain, pipeline and everything that depends on them
   pub fn handle_window_resize(&mut self) {
     self
       .swapchain_container
@@ -149,6 +152,7 @@ impl<'a> Renderer {
     self.swapchain_container.acquire_next_swapchain_image()
   }
 
+  /// Returns a future representing "now" and cleans unused resources
   pub fn synchronize(&self) -> NowFuture {
     let mut now = sync::now(self.device.clone());
     now.cleanup_finished();
@@ -156,12 +160,13 @@ impl<'a> Renderer {
     now
   }
 
+  /// Takes a future and appends all commands that will get executed this frame (in flight)
   pub fn flush_next_future(
     &self,
     previous_future: Box<dyn GpuFuture>,
     swapchain_acquire_future: SwapchainAcquireFuture<Window>,
     image_i: usize,
-  ) -> Result<Fence, FlushError> {
+  ) -> Result<FenceSignalFuture<PresentFuture<Box<dyn GpuFuture>, Window>>, FlushError> {
     // join with swapchain future, draw and then present, signal fence and flush
 
     let command_buffers = self.buffer_container.command_buffers();
