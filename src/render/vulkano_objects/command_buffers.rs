@@ -18,7 +18,7 @@ use vulkano::{
 
 pub fn create_main<V: BufferContents + Pod, I: BufferContents + Pod + Default>(
   device: Arc<Device>,
-  queue: Arc<Queue>,
+  graphics_queue: Arc<Queue>,
   pipeline: Arc<GraphicsPipeline>,
   framebuffers: &Vec<Arc<Framebuffer>>,
   buffers: &Buffers<V, I>,
@@ -32,7 +32,7 @@ pub fn create_main<V: BufferContents + Pod, I: BufferContents + Pod + Default>(
 
       let mut builder = AutoCommandBufferBuilder::primary(
         device.clone(),
-        queue.family(),
+        graphics_queue.family(),
         CommandBufferUsage::MultipleSubmit,
       )
       .unwrap();
@@ -88,7 +88,7 @@ pub fn create_main<V: BufferContents + Pod, I: BufferContents + Pod + Default>(
 #[allow(dead_code)]
 pub fn create_copy<T, S, D>(
   device: Arc<Device>,
-  queue: Arc<Queue>,
+  transfers_queue: Arc<Queue>,
   source: Arc<S>,
   destination: Arc<D>,
 ) -> Arc<PrimaryAutoCommandBuffer>
@@ -98,7 +98,7 @@ where
 {
   let mut builder = AutoCommandBufferBuilder::primary(
     device.clone(),
-    queue.family(),
+    transfers_queue.family(),
     CommandBufferUsage::MultipleSubmit,
   )
   .unwrap();
@@ -110,7 +110,7 @@ where
 
 pub fn create_slice_copy<T, S, D>(
   device: Arc<Device>,
-  queue: Arc<Queue>,
+  transfers_queue: Arc<Queue>,
   source: Arc<S>,
   source_offset: DeviceSize,
   destination: Arc<D>,
@@ -123,7 +123,7 @@ where
 {
   let mut builder = AutoCommandBufferBuilder::primary(
     device.clone(),
-    queue.family(),
+    transfers_queue.family(),
     CommandBufferUsage::MultipleSubmit,
   )
   .unwrap();

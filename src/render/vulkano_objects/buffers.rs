@@ -1,10 +1,10 @@
-use crate::render::models::Model;
+use crate::render::{models::Model, vulkano_objects::QueueFamilies};
 use bytemuck::Pod;
 use std::sync::Arc;
 use vulkano::{
   buffer::{BufferContents, BufferUsage, CpuAccessibleBuffer, DeviceLocalBuffer, ImmutableBuffer},
   command_buffer::{CommandBufferExecFuture, PrimaryAutoCommandBuffer},
-  device::{physical::QueueFamily, Device, Queue},
+  device::{Device, Queue},
   sync::{GpuFuture, NowFuture},
 };
 
@@ -19,10 +19,10 @@ pub struct MainBuffers<V: BufferContents + Pod, I: BufferContents + Pod> {
 impl<V: BufferContents + Pod, I: BufferContents + Pod + Default> MainBuffers<V, I> {
   pub fn new(
     device: Arc<Device>,
+    queue_families: &QueueFamilies,
     transfer_queue: Arc<Queue>,
     models: &Vec<Box<dyn Model<V>>>,
     max_instance_count: usize,
-    queue_families: [QueueFamily; 1],
   ) -> Self {
     let (vertex, vertex_future) = create_immutable_vertex::<V>(transfer_queue.clone(), models);
     let (index, index_future) = create_immutable_index::<V>(transfer_queue, models);
@@ -66,11 +66,11 @@ pub struct Buffers<V: BufferContents + Pod, I: BufferContents + Pod> {
 impl<V: BufferContents + Pod, I: BufferContents + Pod + Default> Buffers<V, I> {
   pub fn initialize(
     device: Arc<Device>,
-    buffer_count: usize,
+    queue_families: &QueueFamilies,
     transfer_queue: Arc<Queue>,
+    buffer_count: usize,
     models: &Vec<Box<dyn Model<V>>>,
     max_instance_count: usize,
-    queue_families: [QueueFamily; 1],
   ) -> Self {
     let instance_source =
       vec![create_cpu_accessible_instance_source(device.clone(), max_instance_count); buffer_count];
@@ -78,10 +78,10 @@ impl<V: BufferContents + Pod, I: BufferContents + Pod + Default> Buffers<V, I> {
     Self {
       main: MainBuffers::new(
         device,
+        queue_families,
         transfer_queue,
         models,
         max_instance_count,
-        queue_families,
       ),
       instance_source,
     }
@@ -143,7 +143,7 @@ where
 fn create_device_instance<'a, I>(
   device: Arc<Device>,
   max_total_instances: u64,
-  queue_families: impl IntoIterator<Item = QueueFamily<'a>>,
+  queue_families: &QueueFamilies,
 ) -> Arc<DeviceLocalBuffer<[I]>>
 where
   I: BufferContents + Pod + Default,
@@ -152,7 +152,10 @@ where
     device.clone(),
     max_total_instances,
     BufferUsage::vertex_buffer_transfer_destination(),
-    queue_families,
+    [
+      queue_families.compute,
+      queue_families.transfers,
+    ],
   )
   .unwrap()
 }

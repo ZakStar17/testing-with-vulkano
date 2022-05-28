@@ -1,13 +1,17 @@
 use crate::{
   render::{
-    buffer_container::BufferContainer, shaders::single_colored,
-    swapchain_container::SwapchainContainer, vulkano_objects, Camera,
+    buffer_container::BufferContainer,
+    shaders::single_colored,
+    swapchain_container::SwapchainContainer,
+    vulkano_objects,
+    vulkano_objects::{QueueFamilies, Queues},
+    Camera,
   },
   Scene,
 };
 use std::sync::Arc;
 use vulkano::{
-  device::{Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo},
+  device::{Device, DeviceCreateInfo, DeviceExtensions},
   instance::Instance,
   pipeline::{graphics::viewport::Viewport, GraphicsPipeline},
   shader::ShaderModule,
@@ -21,13 +25,13 @@ use winit::{
 };
 
 /// Contains arbitrary functions that modify certain Vulkano objects.
-/// 
-/// Doesn't understand synchronization which is handled in `RenderLoop`.
+///
+/// Doesn't handle synchronization (see `RenderLoop`).
 pub struct Renderer {
   surface: Arc<Surface<Window>>,
   _instance: Arc<Instance>,
   device: Arc<Device>,
-  queue: Arc<Queue>,
+  queues: Queues,
   swapchain_container: SwapchainContainer,
   vertex_shader: Arc<ShaderModule>,
   fragment_shader: Arc<ShaderModule>,
@@ -51,13 +55,13 @@ impl<'a> Renderer {
       ..DeviceExtensions::none()
     };
 
-    let (physical_device, queue_family) =
+    let (physical_device, queue_families) =
       vulkano_objects::physical_device::select(&instance, surface.clone(), &device_extensions);
 
-    let (device, mut queues) = Device::new(
+    let (device, mut iter) = Device::new(
       physical_device,
       DeviceCreateInfo {
-        queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+        queue_create_infos: queue_families.get_queue_create_info(),
         enabled_extensions: physical_device
           .required_extensions()
           .union(&device_extensions),
@@ -66,7 +70,7 @@ impl<'a> Renderer {
     )
     .expect("failed to create device");
 
-    let queue = queues.next().unwrap();
+    let queues = QueueFamilies::get_queues(&mut iter);
 
     let swapchain_container =
       SwapchainContainer::new(physical_device, device.clone(), surface.clone());
@@ -92,17 +96,17 @@ impl<'a> Renderer {
 
     let buffer_container = BufferContainer::new(
       device.clone(),
+      &queue_families,
+      &queues,
       pipeline.clone(),
       swapchain_container.get_framebuffers(),
-      queue.clone(),
       scene,
-      [queue_family],
     );
 
     Self {
       surface,
       device,
-      queue,
+      queues,
       swapchain_container,
       vertex_shader,
       fragment_shader,
@@ -136,9 +140,9 @@ impl<'a> Renderer {
 
     self.buffer_container.handle_window_resize(
       self.device.clone(),
+      self.queues.graphics.clone(),
       self.pipeline.clone(),
       self.swapchain_container.get_framebuffers(),
-      self.queue.clone(),
     );
   }
 
@@ -174,17 +178,21 @@ impl<'a> Renderer {
       previous_future
         .join(swapchain_acquire_future)
         .then_execute(
-          self.queue.clone(),
+          self.queues.transfers.clone(),
           command_buffers.instance_copy[image_i].clone(),
         )
         .unwrap()
-        .then_execute_same_queue(command_buffers.main[image_i].clone())
+        .then_signal_semaphore()
+        .then_execute(
+          self.queues.graphics.clone(),
+          command_buffers.main[image_i].clone(),
+        )
         .unwrap(),
     );
 
     boxed
       .then_swapchain_present(
-        self.queue.clone(),
+        self.queues.graphics.clone(),
         self.swapchain_container.get_swapchain(),
         image_i,
       )

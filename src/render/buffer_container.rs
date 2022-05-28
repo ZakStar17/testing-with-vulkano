@@ -3,7 +3,7 @@ use crate::{
     renderable_scene::RenderableScene,
     vertex_data::{MatrixInstance, Vertex3d},
     vulkano_objects,
-    vulkano_objects::buffers::Buffers,
+    vulkano_objects::{buffers::Buffers, physical_device::QueueFamilies, Queues},
   },
   Scene, GENERATE_CUBES,
 };
@@ -12,7 +12,7 @@ use std::sync::Arc;
 use vulkano::{
   buffer::TypedBufferAccess,
   command_buffer::PrimaryAutoCommandBuffer,
-  device::{physical::QueueFamily, Device, Queue},
+  device::{Device, Queue},
   pipeline::GraphicsPipeline,
   render_pass::Framebuffer,
 };
@@ -25,15 +25,15 @@ pub struct CommandBuffers {
 impl CommandBuffers {
   pub fn create(
     device: Arc<Device>,
+    queues: &Queues,
     pipeline: Arc<GraphicsPipeline>,
     framebuffers: &Vec<Arc<Framebuffer>>,
-    queue: Arc<Queue>,
     buffers: &Buffers<Vertex3d, MatrixInstance>,
     instance_count_per_model: &Vec<u32>,
   ) -> Self {
     let main = vulkano_objects::command_buffers::create_main(
       device.clone(),
-      queue.clone(),
+      queues.graphics.clone(),
       pipeline,
       &framebuffers,
       &buffers,
@@ -45,7 +45,7 @@ impl CommandBuffers {
       .map(|i| {
         vulkano_objects::command_buffers::create_slice_copy(
           device.clone(),
-          queue.clone(),
+          queues.transfers.clone(),
           buffers.get_instance_source(i),
           0,
           instance_buffer.clone(),
@@ -64,7 +64,7 @@ impl CommandBuffers {
   pub fn recreate_main(
     &mut self,
     device: Arc<Device>,
-    queue: Arc<Queue>,
+    graphics_queue: Arc<Queue>,
     pipeline: Arc<GraphicsPipeline>,
     framebuffers: &Vec<Arc<Framebuffer>>,
     buffers: &Buffers<Vertex3d, MatrixInstance>,
@@ -72,7 +72,7 @@ impl CommandBuffers {
   ) {
     self.main = vulkano_objects::command_buffers::create_main(
       device.clone(),
-      queue,
+      graphics_queue,
       pipeline,
       &framebuffers,
       &buffers,
@@ -91,11 +91,11 @@ pub struct BufferContainer {
 impl BufferContainer {
   pub fn new(
     device: Arc<Device>,
+    queue_families: &QueueFamilies,
+    queues: &Queues,
     pipeline: Arc<GraphicsPipeline>,
     framebuffers: &Vec<Arc<Framebuffer>>,
-    queue: Arc<Queue>,
     scene: &Scene,
-    queue_families: [QueueFamily; 1],
   ) -> Self {
     let max_instances = if let Some(value) = GENERATE_CUBES {
       (value * value * value) + 256
@@ -106,11 +106,11 @@ impl BufferContainer {
     // uniform buffer count is assigned to the number of image, in this case the number of framebuffers
     let buffers = Buffers::<Vertex3d, MatrixInstance>::initialize(
       device.clone(),
+      queue_families,
+      queues.transfers.clone(),
       framebuffers.len(),
-      queue.clone(),
       &RenderableScene::get_models(),
       max_instances,
-      queue_families,
     );
 
     let instance_count_per_model: Vec<u32> = RenderableScene::instance_count_per_model(scene)
@@ -120,9 +120,9 @@ impl BufferContainer {
 
     let command_buffers = CommandBuffers::create(
       device,
+      queues,
       pipeline,
       framebuffers,
-      queue,
       &buffers,
       &instance_count_per_model,
     );
@@ -137,13 +137,13 @@ impl BufferContainer {
   pub fn handle_window_resize(
     &mut self,
     device: Arc<Device>,
+    graphics_queue: Arc<Queue>,
     pipeline: Arc<GraphicsPipeline>,
     framebuffers: &Vec<Arc<Framebuffer>>,
-    queue: Arc<Queue>,
   ) {
     self.command_buffers.recreate_main(
       device,
-      queue,
+      graphics_queue,
       pipeline,
       framebuffers,
       &self.buffers,
